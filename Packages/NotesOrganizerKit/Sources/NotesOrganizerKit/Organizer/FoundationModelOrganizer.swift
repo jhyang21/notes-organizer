@@ -26,7 +26,11 @@ public struct FoundationModelOrganizer: NoteOrganizing {
     private let tokenEstimator: TokenEstimating
 
     public init() {
+        #if canImport(FoundationModels)
+        self.init(tokenEstimator: SystemTokenEstimator())
+        #else
         self.init(tokenEstimator: HeuristicTokenEstimator())
+        #endif
     }
 
     init(tokenEstimator: TokenEstimating) {
