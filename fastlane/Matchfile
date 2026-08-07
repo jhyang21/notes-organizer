@@ -1,0 +1,5 @@
+git_url("https://github.com/jhyang21/notes-organizer-certificates")
+storage_mode("git")
+type("appstore")
+
+app_identifier(["com.immform.notesorganizer", "com.immform.notesorganizer.share"])
