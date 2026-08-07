@@ -50,7 +50,9 @@ final class AudioCaptureService {
         guard !isRecording else { throw CaptureError.alreadyRecording }
 
         let session = AVAudioSession.sharedInstance()
-        try session.setCategory(.playAndRecord, mode: .measurement, options: [.notifyOthersOnDeactivation, .defaultToSpeaker])
+        // `.notifyOthersOnDeactivation` is a `setActive(options:)` flag, not a
+        // category option — it's applied in `stop()` below, not here.
+        try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker])
         try session.setActive(true)
 
         let input = engine.inputNode

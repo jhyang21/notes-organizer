@@ -27,10 +27,15 @@ final class SpeechAssetManager {
     /// `onStatusChange` fires for every transition, including the final one,
     /// before this returns/throws — callers that only care about the
     /// terminal outcome can ignore it and just inspect the result.
+    ///
+    /// `@MainActor` rather than `@Sendable`: every call site (including the
+    /// one from the KVO progress observer, hopped via `Task { @MainActor in }`
+    /// below) runs on the main actor, and callers want to mutate main-actor
+    /// state (their own `@Observable` view state) directly from inside it.
     func ensureAssets(
         for locale: Locale,
         transcriber: SpeechTranscriber,
-        onStatusChange: @escaping @Sendable (SpeechAssetStatus) -> Void = { _ in }
+        onStatusChange: @escaping @MainActor (SpeechAssetStatus) -> Void = { _ in }
     ) async throws {
         func update(_ next: SpeechAssetStatus) {
             status = next
