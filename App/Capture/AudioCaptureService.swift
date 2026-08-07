@@ -70,11 +70,16 @@ final class AudioCaptureService {
         // audio thread. The explicit annotation makes it nonisolated instead,
         // and it captures only the local continuations (Sendable value
         // types), not `self`.
+        // `AsyncStream.Continuation.yield(_:)` takes `sending Element`, which
+        // hands `buffer` off to whatever isolation domain consumes the
+        // stream — so the RMS read has to happen *before* the yield below,
+        // not after; reusing `buffer` post-yield is exactly the data race
+        // the compiler is (correctly) rejecting when the order is reversed.
         let tapBlock: @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void = { buffer, _ in
-            bufferContinuation.yield(buffer)
             if let level = AudioCaptureService.normalizedRMSLevel(buffer) {
                 levelContinuation.yield(level)
             }
+            bufferContinuation.yield(buffer)
         }
         input.installTap(onBus: 0, bufferSize: 4096, format: format, block: tapBlock)
 
