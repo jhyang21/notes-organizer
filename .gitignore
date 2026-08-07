@@ -1,0 +1,16 @@
+# Xcode project — always regenerated via `xcodegen generate`, never committed
+*.xcodeproj
+*.xcworkspace
+
+# Build products
+DerivedData/
+.build/
+*.ipa
+
+# Secrets
+*.p8
+fastlane/report.xml
+fastlane/README.md
+
+# macOS
+.DS_Store

@@ -1,0 +1,68 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          if [ -d "/Applications/Xcode_26.4.1.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_26.4.1.app
+          else
+            echo "Xcode_26.4.1.app not found on this runner; using default Xcode."
+          fi
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Discover an iPhone simulator
+        id: sim
+        run: |
+          set -euo pipefail
+          DEVICE_INFO=$(xcrun simctl list devices available --json \
+            | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+for runtime, devices in data["devices"].items():
+    if "iOS" not in runtime:
+        continue
+    for d in devices:
+        if d.get("isAvailable", True) and d["name"].startswith("iPhone"):
+            print(f"{d[\"name\"]}|{runtime}")
+            sys.exit(0)
+sys.exit(1)
+')
+          NAME="${DEVICE_INFO%%|*}"
+          RUNTIME_ID="${DEVICE_INFO##*|}"
+          OS_VERSION=$(echo "$RUNTIME_ID" | sed -E 's/.*iOS-([0-9]+)-([0-9]+).*/\1.\2/')
+          echo "Selected simulator: $NAME (iOS $OS_VERSION)"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "os=$OS_VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Build app + share extension (unsigned)
+        run: |
+          xcodebuild build \
+            -project NotesOrganizer.xcodeproj \
+            -scheme NotesOrganizer \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.name }},OS=${{ steps.sim.outputs.os }}" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Test NotesOrganizerKit
+        run: |
+          cd Packages/NotesOrganizerKit
+          xcodebuild test \
+            -scheme NotesOrganizerKit \
+            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.name }},OS=${{ steps.sim.outputs.os }}"
