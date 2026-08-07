@@ -63,15 +63,20 @@ final class AudioCaptureService {
         self.bufferContinuation = bufferContinuation
         self.levelContinuation = levelContinuation
 
-        // Captures the local continuations (Sendable value types), not
-        // `self`, so this closure carries no main-actor state across the
-        // realtime audio thread it runs on.
-        input.installTap(onBus: 0, bufferSize: 4096, format: format) { buffer, _ in
+        // Explicitly typed `@Sendable`: `AVAudioNodeTapBlock` isn't itself
+        // marked `@Sendable`, so a closure literal written inline here would
+        // otherwise infer @MainActor isolation from this method's context
+        // (SE-0316) — wrong, since the tap actually fires on a realtime
+        // audio thread. The explicit annotation makes it nonisolated instead,
+        // and it captures only the local continuations (Sendable value
+        // types), not `self`.
+        let tapBlock: @Sendable (AVAudioPCMBuffer, AVAudioTime) -> Void = { buffer, _ in
             bufferContinuation.yield(buffer)
             if let level = AudioCaptureService.normalizedRMSLevel(buffer) {
                 levelContinuation.yield(level)
             }
         }
+        input.installTap(onBus: 0, bufferSize: 4096, format: format, block: tapBlock)
 
         do {
             engine.prepare()
@@ -135,7 +140,10 @@ final class AudioCaptureService {
 
     /// Maps RMS amplitude to a 0...1 level using the same dB-normalized
     /// curve as the Relora reference implementation (silence floor at -60 dB).
-    private static func normalizedRMSLevel(_ buffer: AVAudioPCMBuffer) -> Float? {
+    /// `nonisolated`: static members of a `@MainActor` type are MainActor-
+    /// isolated by default, but this is called from the nonisolated tap
+    /// block above, off the main actor.
+    private nonisolated static func normalizedRMSLevel(_ buffer: AVAudioPCMBuffer) -> Float? {
         guard let channelData = buffer.floatChannelData else { return nil }
         let frameCount = Int(buffer.frameLength)
         guard frameCount > 0 else { return nil }
