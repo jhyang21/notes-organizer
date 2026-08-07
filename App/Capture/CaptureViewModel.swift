@@ -49,7 +49,7 @@ final class CaptureViewModel {
     private var recordingTasks: [Task<Void, Never>] = []
     private var isFinishingRecording = false
 
-    init(organizer: NoteOrganizing = MockOrganizer(result: OrganizedNote()), locale: Locale = .current) {
+    init(organizer: NoteOrganizing = FoundationModelOrganizer(), locale: Locale = .current) {
         self.organizer = organizer
         self.locale = locale
         self.audioCapture = AudioCaptureService()
@@ -62,6 +62,15 @@ final class CaptureViewModel {
     }
 
     // MARK: - Intents
+
+    /// Checks Apple Intelligence before anything is recorded, so an
+    /// ineligible iPhone says so on launch rather than after the user has
+    /// talked for two minutes. Only ever moves the machine out of `.idle`.
+    func checkModelAvailability() {
+        guard case .idle = state else { return }
+        guard let failure = ModelAvailability.currentFailure() else { return }
+        state = .failed(.organizeFailed(failure))
+    }
 
     func startCapture() {
         guard case .idle = state else { return }
@@ -77,9 +86,10 @@ final class CaptureViewModel {
         finishRecording()
     }
 
-    /// Abandons an in-progress or completed capture and returns to idle —
-    /// used by "discard" / "record again" affordances in the UI (M5 wires
-    /// the actual buttons; this just resets the machine).
+    /// Abandons an in-progress or completed capture and returns to idle.
+    /// Re-runs the availability check on the way, so "Try again" on a
+    /// model-not-ready screen lands back on that screen while the model is
+    /// still unavailable, instead of on a record button that can't work.
     func reset() {
         lifecycleTask?.cancel()
         lifecycleTask = nil
@@ -90,6 +100,7 @@ final class CaptureViewModel {
         audioCapture.stop()
         silenceDetector = SilenceDetector()
         state = .idle
+        checkModelAvailability()
     }
 
     // MARK: - Lifecycle
