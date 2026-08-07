@@ -4,7 +4,7 @@ import SwiftUI
 struct NotesOrganizerApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            CaptureScreen()
         }
     }
 }
