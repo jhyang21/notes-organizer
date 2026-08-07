@@ -8,7 +8,7 @@ public struct OrganizedNote: Equatable, Sendable {
     public var sections: [NoteSection]
     public var actionItems: [String]
 
-    public init(title: String, sections: [NoteSection] = [], actionItems: [String] = []) {
+    public init(title: String = "", sections: [NoteSection] = [], actionItems: [String] = []) {
         self.title = title
         self.sections = sections
         self.actionItems = actionItems
