@@ -1,6 +1,15 @@
 import AVFoundation
 import Foundation
 
+// `AVAudioPCMBuffer` isn't marked `Sendable` in this SDK, so handing one
+// through `AsyncStream<AVAudioPCMBuffer>` — even as a value's single, final
+// use — can't be proven data-race-free by Swift 6's region checker. It's
+// safe to assert here: `installTap` hands the tap block a buffer it
+// uniquely owns for that call (the engine doesn't retain or mutate it
+// afterward), so there's no live alias left behind to race against once
+// it's yielded to the stream.
+extension AVAudioPCMBuffer: @unchecked @retroactive Sendable {}
+
 /// Captures microphone audio via `AVAudioEngine`, emitting raw PCM buffers
 /// for `TranscriptionService` and a normalized (0...1) RMS level stream for
 /// UI metering. App-target only: AVFoundation and hardware permissions
