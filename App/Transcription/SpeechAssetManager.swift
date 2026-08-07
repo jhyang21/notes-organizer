@@ -30,7 +30,7 @@ final class SpeechAssetManager {
     func ensureAssets(
         for locale: Locale,
         transcriber: SpeechTranscriber,
-        onStatusChange: (SpeechAssetStatus) -> Void = { _ in }
+        onStatusChange: @escaping @Sendable (SpeechAssetStatus) -> Void = { _ in }
     ) async throws {
         func update(_ next: SpeechAssetStatus) {
             status = next
