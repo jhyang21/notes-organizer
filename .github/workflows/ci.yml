@@ -36,29 +36,27 @@ jobs:
             .devices
             | to_entries[]
             | select(.key | contains("iOS"))
-            | .key as $runtime
             | .value[]
             | select(.isAvailable == true and (.name | startswith("iPhone")))
-            | "\(.name)|\($runtime)"
+            | "\(.udid)|\(.name)"
           ' | head -n1)
           if [ -z "$DEVICE_INFO" ]; then
             echo "No available iPhone simulator found." >&2
             xcrun simctl list runtimes
             exit 1
           fi
-          NAME="${DEVICE_INFO%%|*}"
-          RUNTIME_ID="${DEVICE_INFO##*|}"
-          OS_VERSION=$(echo "$RUNTIME_ID" | sed -E 's/.*iOS-([0-9]+)-([0-9]+).*/\1.\2/')
-          echo "Selected simulator: $NAME (iOS $OS_VERSION)"
+          UDID="${DEVICE_INFO%%|*}"
+          NAME="${DEVICE_INFO##*|}"
+          echo "Selected simulator: $NAME ($UDID)"
+          echo "udid=$UDID" >> "$GITHUB_OUTPUT"
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
-          echo "os=$OS_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Build app + share extension (unsigned)
         run: |
           xcodebuild build \
             -project NotesOrganizer.xcodeproj \
             -scheme NotesOrganizer \
-            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.name }},OS=${{ steps.sim.outputs.os }}" \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
             CODE_SIGNING_ALLOWED=NO
 
       - name: Test NotesOrganizerKit
@@ -66,4 +64,4 @@ jobs:
           cd Packages/NotesOrganizerKit
           xcodebuild test \
             -scheme NotesOrganizerKit \
-            -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.name }},OS=${{ steps.sim.outputs.os }}"
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}"
