@@ -23,18 +23,24 @@ public struct FoundationModelOrganizer: NoteOrganizing {
     /// the model would invent structure around a stray word.
     static let minimumMeaningfulCharacters = 10
 
+    /// Two estimators, because the chunker's inner loop is synchronous and
+    /// the model's own tokenizer is not: `tokenEstimator` drives chunking,
+    /// `asyncEstimator` answers the one question worth a precise answer —
+    /// does this transcript fit in a single call?
     private let tokenEstimator: TokenEstimating
+    private let asyncEstimator: AsyncTokenEstimating
 
     public init() {
         #if canImport(FoundationModels)
-        self.init(tokenEstimator: SystemTokenEstimator())
+        self.init(tokenEstimator: HeuristicTokenEstimator(), asyncEstimator: SystemTokenEstimator())
         #else
-        self.init(tokenEstimator: HeuristicTokenEstimator())
+        self.init(tokenEstimator: HeuristicTokenEstimator(), asyncEstimator: HeuristicTokenEstimator())
         #endif
     }
 
-    init(tokenEstimator: TokenEstimating) {
+    init(tokenEstimator: TokenEstimating, asyncEstimator: AsyncTokenEstimating) {
         self.tokenEstimator = tokenEstimator
+        self.asyncEstimator = asyncEstimator
     }
 
     public func organize(_ text: String) async throws -> OrganizedNote {
@@ -73,7 +79,7 @@ extension FoundationModelOrganizer {
     // MARK: - Routing
 
     private func organize(_ transcript: String, budget: TranscriptChunker.Budget) async throws -> OrganizedNote {
-        if tokenEstimator.tokenCount(transcript) <= budget.hardCeilingTokens {
+        if await asyncEstimator.estimatedTokenCount(transcript) <= budget.hardCeilingTokens {
             return try await organizeSingleCall(transcript)
         }
         return try await organizeChunked(transcript, budget: budget)

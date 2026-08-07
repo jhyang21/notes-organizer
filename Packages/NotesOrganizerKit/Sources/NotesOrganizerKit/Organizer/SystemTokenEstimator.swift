@@ -8,12 +8,16 @@ import FoundationModels
 /// under-counts on dense text, and an under-count means the organizer sends
 /// a chunk the model then rejects, costing a whole re-chunk pass. A real
 /// count keeps the single-call path on the transcripts that genuinely fit.
-struct SystemTokenEstimator: TokenEstimating {
+///
+/// `SystemLanguageModel.tokenCount(for:)` is async, which is why this
+/// conforms to `AsyncTokenEstimating` rather than the synchronous
+/// `TokenEstimating` the chunker uses.
+struct SystemTokenEstimator: AsyncTokenEstimating {
     private let fallback = HeuristicTokenEstimator()
 
-    func tokenCount(_ text: String) -> Int {
+    func estimatedTokenCount(_ text: String) async -> Int {
         if #available(iOS 26.4, *) {
-            if let count = try? SystemLanguageModel.default.tokenCount(for: text) {
+            if let count = try? await SystemLanguageModel.default.tokenCount(for: text) {
                 return count
             }
         }
