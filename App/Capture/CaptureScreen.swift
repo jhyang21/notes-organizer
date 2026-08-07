@@ -1,13 +1,16 @@
 import NotesOrganizerKit
 import SwiftUI
 
-/// The single-screen capture flow: idle → recording → organizing → a
-/// simple note display, replacing the M0 placeholder. Real preview/save UI
-/// (contact-free here — just title/sections/action items) with save/share
-/// actions lands in M5; this is enough to exercise the pipeline end to end
-/// from TestFlight for M4's exit criteria.
+/// The single-screen capture flow: idle → recording → organizing →
+/// preview → saved. The preview, save actions, and unavailable states are
+/// all `NotesOrganizerKit` views, so the share extension (M6) shows the user
+/// the same screens the app does.
 struct CaptureScreen: View {
-    @State private var viewModel = CaptureViewModel()
+    @State private var viewModel: CaptureViewModel
+
+    init(viewModel: CaptureViewModel = CaptureViewModel()) {
+        _viewModel = State(initialValue: viewModel)
+    }
 
     var body: some View {
         VStack(spacing: 24) {
@@ -32,6 +35,9 @@ struct CaptureScreen: View {
         }
         .padding()
         .animation(.default, value: viewModel.state)
+        .task {
+            viewModel.checkModelAvailability()
+        }
     }
 
     // MARK: - States
@@ -102,45 +108,16 @@ struct CaptureScreen: View {
     }
 
     private func previewView(note: OrganizedNote) -> some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                Text(note.title.isEmpty ? "Untitled note" : note.title)
-                    .font(.title2.bold())
+        VStack(spacing: 16) {
+            OrganizedNotePreviewView(note: note)
+                .frame(maxHeight: .infinity)
 
-                ForEach(Array(note.sections.enumerated()), id: \.offset) { _, section in
-                    VStack(alignment: .leading, spacing: 6) {
-                        if !section.heading.isEmpty {
-                            Text(section.heading)
-                                .font(.headline)
-                        }
-                        ForEach(Array(section.bullets.enumerated()), id: \.offset) { _, bullet in
-                            Label(bullet, systemImage: "circle.fill")
-                                .imageScale(.small)
-                                .font(.body)
-                        }
-                    }
-                }
+            SaveActionsBar(note: note)
 
-                if !note.actionItems.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Action items")
-                            .font(.headline)
-                        ForEach(Array(note.actionItems.enumerated()), id: \.offset) { _, item in
-                            Label(item, systemImage: "checkmark.circle")
-                                .imageScale(.small)
-                                .font(.body)
-                        }
-                    }
-                }
-
-                Button("Record again") {
-                    viewModel.reset()
-                }
-                .buttonStyle(.bordered)
-                .padding(.top, 8)
+            Button("New note") {
+                viewModel.reset()
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding()
+            .font(.subheadline)
         }
     }
 
@@ -154,7 +131,23 @@ struct CaptureScreen: View {
         }
     }
 
+    /// Organizer failures get the package's `UnavailableView`, which owns the
+    /// per-reason copy and the right action for each (open Settings, retry,
+    /// record again). Everything upstream of the organizer — microphone,
+    /// speech assets, the audio pipeline — is app-only, so it keeps its own
+    /// view here.
+    @ViewBuilder
     private func failedView(failure: CaptureFailure) -> some View {
+        if case .organizeFailed(let organizeFailure) = failure {
+            UnavailableView(failure: organizeFailure) {
+                viewModel.reset()
+            }
+        } else {
+            captureFailureView(failure: failure)
+        }
+    }
+
+    private func captureFailureView(failure: CaptureFailure) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .font(.system(size: 48))
@@ -201,31 +194,18 @@ private extension CaptureFailure {
             reason
         case .emptyRecording:
             "Try again and speak for a moment before stopping."
-        case .organizeFailed(let failure):
-            failure.message
+        case .organizeFailed:
+            // Unreachable: `failedView` routes organizer failures to
+            // `UnavailableView`, which has copy of its own for each reason.
+            "Something went wrong organizing that note."
         }
     }
 }
 
-private extension OrganizeFailure {
-    var message: String {
-        switch self {
-        case .deviceNotEligible:
-            "This device doesn't support Apple Intelligence."
-        case .appleIntelligenceNotEnabled:
-            "Turn on Apple Intelligence in Settings to organize notes."
-        case .modelNotReady(let reason):
-            reason
-        case .emptyTranscript:
-            "There was nothing to organize."
-        case .contextOverflow:
-            "That recording was too long to organize in one pass."
-        case .overSummarized:
-            "The organized note lost too much detail. Try again."
-        }
-    }
-}
-
-#Preview {
-    CaptureScreen()
+#Preview("Preview state") {
+    CaptureScreen(viewModel: CaptureViewModel(organizer: MockOrganizer(result: OrganizedNote(
+        title: "Kitchen Renovation Notes",
+        sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4,200 for cabinets"])],
+        actionItems: ["Call the contractor back on Thursday"]
+    ))))
 }

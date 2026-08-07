@@ -18,6 +18,11 @@ struct TranscriptChunker {
         let hardCeilingTokens: Int
 
         static let `default` = Budget(targetTokensPerChunk: 1000, hardCeilingTokens: 1400)
+
+        /// Used for the single re-chunk after the model rejects a chunk the
+        /// token estimate said would fit. Cutting the ceiling roughly in
+        /// half buys enough room for whatever the estimate under-counted.
+        static let reduced = Budget(targetTokensPerChunk: 500, hardCeilingTokens: 700)
     }
 
     private let tokenEstimator: TokenEstimating
