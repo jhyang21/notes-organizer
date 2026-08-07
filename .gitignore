@@ -12,5 +12,8 @@ DerivedData/
 fastlane/report.xml
 fastlane/README.md
 
+# No Gemfile.lock is committed — see Gemfile for why.
+Gemfile.lock
+
 # macOS
 .DS_Store

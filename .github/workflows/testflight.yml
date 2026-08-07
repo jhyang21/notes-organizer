@@ -1,0 +1,52 @@
+name: TestFlight
+
+# Manual dispatch only for now: the Apple/App Store Connect account setup
+# (App IDs, ASC app record, API key) and the five repo secrets this
+# workflow needs (ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8_BASE64,
+# MATCH_PASSWORD, MATCH_GIT_TOKEN) don't exist yet. A `push: branches:
+# [main]` trigger would just fail on every merge until then, so it's left
+# out here. Add it back once the secrets are in place.
+on:
+  workflow_dispatch:
+
+jobs:
+  beta:
+    runs-on: macos-26
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          if [ -d "/Applications/Xcode_26.4.1.app" ]; then
+            sudo xcode-select -s /Applications/Xcode_26.4.1.app
+          else
+            echo "Xcode_26.4.1.app not found on this runner; using default Xcode."
+          fi
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: false
+
+      - name: Install fastlane
+        run: bundle install
+
+      - name: Build and upload to TestFlight
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_TOKEN: ${{ secrets.MATCH_GIT_TOKEN }}
+          BUILD_NUMBER: ${{ github.run_number }}
+        run: bundle exec fastlane beta

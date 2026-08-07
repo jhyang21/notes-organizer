@@ -54,6 +54,35 @@ xcodebuild test -scheme NotesOrganizerKit \
 See `.github/workflows/ci.yml` for the exact commands CI runs, including how
 it discovers a valid simulator name at runtime.
 
+## TestFlight pipeline
+
+`fastlane` (Gemfile, `fastlane/Appfile`, `fastlane/Matchfile`,
+`fastlane/Fastfile`) builds and uploads a beta via the `beta` lane:
+`setup_ci` → `app_store_connect_api_key` → `match` (readonly: false) →
+`build_app` (build number from `CURRENT_PROJECT_VERSION` xcarg, since
+`xcodegen generate` would clobber an `agvtool`-set version) →
+`upload_to_testflight`.
+
+`.github/workflows/testflight.yml` runs this lane. It is
+`workflow_dispatch`-only for now — trigger it manually from the Actions
+tab, or `gh workflow run testflight.yml`, once the secrets below exist.
+The `push: branches: [main]` trigger is deliberately left out until then;
+enable it once a manual run succeeds.
+
+Required repo secrets (GitHub → Settings → Secrets and variables →
+Actions), none of which exist yet: `ASC_KEY_ID`, `ASC_ISSUER_ID`,
+`ASC_KEY_P8_BASE64` (the App Store Connect API key, base64-encoded),
+`MATCH_PASSWORD`, `MATCH_GIT_TOKEN` (a PAT scoped to the certificates
+repo below).
+
+Certificates and provisioning profiles live in a separate private repo,
+`https://github.com/jhyang21/notes-organizer-certificates`, managed
+headlessly by fastlane `match` — nothing there is created or edited by
+hand.
+
+No `Gemfile.lock` is committed (see the Gemfile's own comment for why);
+CI runs a plain `bundle install`.
+
 ## Milestones
 
 M0 (this skeleton) through M7 are tracked in the plan's Milestones section.
