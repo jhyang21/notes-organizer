@@ -32,19 +32,20 @@ jobs:
         id: sim
         run: |
           set -euo pipefail
-          DEVICE_INFO=$(xcrun simctl list devices available --json \
-            | python3 -c '
-import json, sys
-data = json.load(sys.stdin)
-for runtime, devices in data["devices"].items():
-    if "iOS" not in runtime:
-        continue
-    for d in devices:
-        if d.get("isAvailable", True) and d["name"].startswith("iPhone"):
-            print(f"{d[\"name\"]}|{runtime}")
-            sys.exit(0)
-sys.exit(1)
-')
+          DEVICE_INFO=$(xcrun simctl list devices available --json | jq -r '
+            .devices
+            | to_entries[]
+            | select(.key | contains("iOS"))
+            | .key as $runtime
+            | .value[]
+            | select(.isAvailable == true and (.name | startswith("iPhone")))
+            | "\(.name)|\($runtime)"
+          ' | head -n1)
+          if [ -z "$DEVICE_INFO" ]; then
+            echo "No available iPhone simulator found." >&2
+            xcrun simctl list runtimes
+            exit 1
+          fi
           NAME="${DEVICE_INFO%%|*}"
           RUNTIME_ID="${DEVICE_INFO##*|}"
           OS_VERSION=$(echo "$RUNTIME_ID" | sed -E 's/.*iOS-([0-9]+)-([0-9]+).*/\1.\2/')
