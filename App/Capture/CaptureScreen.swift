@@ -45,11 +45,11 @@ struct CaptureScreen: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
-                        DiagnosticsScreen()
+                        SettingsScreen()
                     } label: {
-                        Image(systemName: "stethoscope")
+                        Image(systemName: "gearshape")
                     }
-                    .accessibilityLabel("Diagnostics")
+                    .accessibilityLabel("Settings")
                 }
             }
         }

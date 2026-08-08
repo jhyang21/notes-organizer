@@ -17,6 +17,12 @@ settings:
 packages:
   NotesOrganizerKit:
     path: Packages/NotesOrganizerKit
+  # The repo's only external dependency, and it belongs to the app alone.
+  # The SPM-only mirror rather than `purchases-ios`, whose repository also
+  # carries the Xcode project and its checked-in binaries.
+  RevenueCat:
+    url: https://github.com/RevenueCat/purchases-ios-spm.git
+    from: 5.0.0
 
 targets:
   NotesOrganizer:
@@ -26,6 +32,13 @@ targets:
       - path: App
     dependencies:
       - package: NotesOrganizerKit
+      # App target only. The share extension reads `EntitlementStore` and
+      # never buys anything, and the kit stays SDK-free so its tests stay
+      # network-free.
+      - package: RevenueCat
+        product: RevenueCat
+      - package: RevenueCat
+        product: RevenueCatUI
       - target: ShareExtension
         embed: true
     settings:
