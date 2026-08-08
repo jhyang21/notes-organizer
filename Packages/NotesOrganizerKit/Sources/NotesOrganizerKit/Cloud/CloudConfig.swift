@@ -15,13 +15,12 @@ public struct CloudConfig: Sendable {
         self.anonKey = anonKey
     }
 
-    // TODO(M8): replace both values with the relora-prod project ref and its
-    // publishable anon key, which TidyNote shares under the `tidynote_` naming
-    // rule. Placeholders are safe to ship — nothing calls the cloud until M11
-    // wires the router into the view models.
+    /// The relora-prod project, which TidyNote shares under the `tidynote_`
+    /// naming rule — the function this key can reach is `tidynote_organize`
+    /// and nothing else.
     public static let production = CloudConfig(
-        functionsURL: URL(string: "https://TODO-PROJECT-REF.supabase.co/functions/v1")!,
-        anonKey: "TODO_SUPABASE_PUBLISHABLE_KEY"
+        functionsURL: URL(string: "https://qcooviiralmdnfvbrtae.supabase.co/functions/v1")!,
+        anonKey: "sb_publishable_GNjOCWCE_BcrdGKHPvl_sw_QVeRssb7"
     )
 
     /// The kill switch. Every client milestone before M11 merges dark and

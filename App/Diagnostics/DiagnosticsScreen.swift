@@ -155,7 +155,7 @@ struct DiagnosticsScreen: View {
     private var sharePayloadSection: some View {
         Section("Share payloads") {
             if viewModel.sharePayloads.isEmpty {
-                Text("Share something into Notes Organizer first.")
+                Text("Share something into TidyNote first.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else {
