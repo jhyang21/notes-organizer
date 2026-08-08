@@ -32,7 +32,7 @@ struct ShareRootView: View {
             content
                 .padding()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .navigationTitle("Notes Organizer")
+                .navigationTitle("TidyNote")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -72,9 +72,15 @@ struct ShareRootView: View {
 
         case .unavailable(let failure):
             VStack(spacing: 16) {
-                UnavailableView(failure: failure) {
-                    Task { await model.retry() }
-                }
+                UnavailableView(
+                    failure: failure,
+                    onRetry: { Task { await model.retry() } },
+                    onPremiumTidy: { Task { await model.requestPremiumTidy() } },
+                    // No paywall here — StoreKit's purchase UI doesn't work
+                    // in a share extension, so `inShareExtension` turns the
+                    // buttons only the app can honour into a line saying so.
+                    inShareExtension: true
+                )
                 copyOriginalButton
             }
         }
@@ -115,11 +121,14 @@ struct ShareRootView: View {
 #Preview("Preview state") {
     ShareRootView(
         items: [],
-        model: ShareViewModel(organizer: MockOrganizer(result: OrganizedNote(
-            title: "Kitchen Renovation Notes",
-            sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4,200 for cabinets"])],
-            actionItems: ["Call the contractor back on Thursday"]
-        ))),
+        model: ShareViewModel(routing: OrganizeRouting(
+            cloudEnabled: false,
+            onDevice: MockOrganizer(result: OrganizedNote(
+                title: "Kitchen Renovation Notes",
+                sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4,200 for cabinets"])],
+                actionItems: ["Call the contractor back on Thursday"]
+            ))
+        )),
         onDone: {},
         onCancel: {}
     )

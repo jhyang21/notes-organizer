@@ -120,7 +120,7 @@ struct OrganizerRouterTests {
         let onDevice = MockOrganizer(result: onDeviceNote)
         let router = makeRouter(route: .consentNeeded, cloud: cloud, onDevice: onDevice, log: log)
 
-        await #expect(throws: OrganizeFailure.self) {
+        await #expect(throws: OrganizeFailure.cloudConsentNeeded) {
             try await router.organize("some text to organize")
         }
         #expect(await cloud.receivedTranscripts.isEmpty)

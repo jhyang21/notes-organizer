@@ -38,6 +38,11 @@ public enum OrganizeFailure: Error, Equatable, Sendable {
     /// only ways past it are next month or a subscription.
     case cloudQuotaExhausted
 
+    /// A premium tidy is the only way forward and the user hasn't agreed to
+    /// send text yet. The app can ask again on the spot; the share extension
+    /// can only point at the app, which is where the question gets answered.
+    case cloudConsentNeeded
+
     /// A premium tidy needs a connection and there isn't one.
     case networkUnavailable
 

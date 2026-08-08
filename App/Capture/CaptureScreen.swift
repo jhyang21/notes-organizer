@@ -7,6 +7,7 @@ import SwiftUI
 /// screens the app does.
 struct CaptureScreen: View {
     @State private var viewModel: CaptureViewModel
+    @State private var isShowingPaywall = false
 
     init(viewModel: CaptureViewModel = CaptureViewModel()) {
         _viewModel = State(initialValue: viewModel)
@@ -31,9 +32,14 @@ struct CaptureScreen: View {
                 case .failed(let failure):
                     captureFailureView(failure: failure)
                 case .unavailable(let failure):
-                    UnavailableView(failure: failure) {
-                        viewModel.reset()
-                    }
+                    UnavailableView(
+                        failure: failure,
+                        onRetry: { viewModel.retry() },
+                        onPremiumTidy: { viewModel.requestPremiumTidy() },
+                        onUpgrade: { isShowingPaywall = true }
+                    )
+                case .premiumTidyFailed(_, let failure):
+                    premiumTidyFailureView(failure: failure)
                 }
             }
             .padding()
@@ -53,6 +59,18 @@ struct CaptureScreen: View {
                 }
             }
         }
+        .sheet(isPresented: $isShowingPaywall, onDismiss: { viewModel.refreshPlan() }) {
+            PaywallScreen()
+        }
+        .sheet(
+            isPresented: $viewModel.isShowingCloudConsent,
+            onDismiss: { viewModel.cloudConsentDismissed() }
+        ) {
+            CloudConsentSheet(
+                onContinue: { viewModel.acceptCloudConsent() },
+                onNotNow: { viewModel.declineCloudConsent() }
+            )
+        }
         .task {
             viewModel.checkModelAvailability()
         }
@@ -62,7 +80,7 @@ struct CaptureScreen: View {
 
     private var idleView: some View {
         VStack(spacing: 24) {
-            Text("Notes Organizer")
+            Text("TidyNote")
                 .font(.largeTitle.bold())
 
             Button {
@@ -132,8 +150,38 @@ struct CaptureScreen: View {
 
             SaveActionsBar(note: note, source: .app)
 
+            // The pitch for Pro, made by the product rather than a banner:
+            // the user has a tidy in front of them and can see what a better
+            // one does to it.
+            if let offer = viewModel.premiumTidyOffer {
+                Button(offer.title) {
+                    viewModel.requestPremiumTidy()
+                }
+                .buttonStyle(.bordered)
+                .font(.subheadline)
+            }
+
             Button("New note") {
                 viewModel.reset()
+            }
+            .font(.subheadline)
+        }
+    }
+
+    /// A premium tidy that failed after a plain one worked. The note is still
+    /// here, so the way back to it is always on screen — `UnavailableView`
+    /// offers no retry at all on a spent quota.
+    private func premiumTidyFailureView(failure: OrganizeFailure) -> some View {
+        VStack(spacing: 16) {
+            UnavailableView(
+                failure: failure,
+                onRetry: { viewModel.requestPremiumTidy() },
+                onPremiumTidy: { viewModel.requestPremiumTidy() },
+                onUpgrade: { isShowingPaywall = true }
+            )
+
+            Button("Back to your note") {
+                viewModel.returnToPreview()
             }
             .font(.subheadline)
         }
@@ -167,7 +215,7 @@ private extension CaptureFailure {
     var message: String {
         switch self {
         case .microphonePermissionDenied:
-            "Notes Organizer needs microphone access to transcribe your voice. Enable it in Settings."
+            "TidyNote needs microphone access to transcribe your voice. Enable it in Settings."
         case .assetsUnsupported:
             "This device doesn't support on-device transcription in this language."
         case .assetDownloadFailed(let reason):
@@ -181,9 +229,12 @@ private extension CaptureFailure {
 }
 
 #Preview("Preview state") {
-    CaptureScreen(viewModel: CaptureViewModel(organizer: MockOrganizer(result: OrganizedNote(
-        title: "Kitchen Renovation Notes",
-        sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4,200 for cabinets"])],
-        actionItems: ["Call the contractor back on Thursday"]
-    ))))
+    CaptureScreen(viewModel: CaptureViewModel(routing: OrganizeRouting(
+        cloudEnabled: false,
+        onDevice: MockOrganizer(result: OrganizedNote(
+            title: "Kitchen Renovation Notes",
+            sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4,200 for cabinets"])],
+            actionItems: ["Call the contractor back on Thursday"]
+        ))
+    )))
 }
