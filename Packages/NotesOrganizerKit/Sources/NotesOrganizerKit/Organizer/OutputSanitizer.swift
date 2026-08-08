@@ -12,25 +12,25 @@ enum OutputSanitizer {
         var seen = Set<String>()
         var actionItems: [String] = []
         for rawItem in note.actionItems {
-            let item = collapseWhitespace(rawItem)
+            let item = TextShaping.collapseWhitespace(rawItem)
             let key = item.lowercased()
             guard !item.isEmpty, !seen.contains(key) else { continue }
             seen.insert(key)
             actionItems.append(item)
         }
 
-        return OrganizedNote(title: collapseWhitespace(note.title), sections: sections, actionItems: actionItems)
+        return OrganizedNote(title: TextShaping.collapseWhitespace(note.title), sections: sections, actionItems: actionItems)
     }
 
     /// Drops the section entirely once its bullets are all empty/duplicate,
     /// so a section with no remaining content never reaches the renderer.
     private static func sanitize(section: NoteSection) -> NoteSection? {
-        let heading = capHeadingLength(collapseWhitespace(section.heading))
+        let heading = TextShaping.truncate(TextShaping.collapseWhitespace(section.heading), to: maxHeadingLength)
 
         var bullets: [String] = []
         var previousKey: String?
         for rawBullet in section.bullets {
-            let bullet = collapseWhitespace(rawBullet)
+            let bullet = TextShaping.collapseWhitespace(rawBullet)
             guard !bullet.isEmpty else { continue }
             let key = bullet.lowercased()
             if key == previousKey { continue }
@@ -40,26 +40,6 @@ enum OutputSanitizer {
 
         guard !bullets.isEmpty else { return nil }
         return NoteSection(heading: heading, bullets: bullets)
-    }
-
-    private static func collapseWhitespace(_ text: String) -> String {
-        text
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
-    }
-
-    /// Cuts `heading` to `maxHeadingLength` characters at the last word
-    /// boundary within that limit, rather than mid-word.
-    private static func capHeadingLength(_ heading: String) -> String {
-        guard heading.count > maxHeadingLength else { return heading }
-
-        let limit = heading.index(heading.startIndex, offsetBy: maxHeadingLength)
-        let truncated = heading[heading.startIndex..<limit]
-        if let lastSpace = truncated.lastIndex(of: " ") {
-            return String(truncated[truncated.startIndex..<lastSpace])
-        }
-        return String(truncated)
     }
 
     /// The plan's over-summarization guard: reorganizing a transcript

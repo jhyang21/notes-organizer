@@ -17,7 +17,7 @@ enum DeterministicFormatter {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return OrganizedNote() }
 
-        let sections = paragraphs(in: trimmed)
+        let sections = TextShaping.paragraphs(in: trimmed)
             .map { NoteSection(heading: "", bullets: bullets(in: $0)) }
             .filter { !$0.bullets.isEmpty }
 
@@ -35,22 +35,11 @@ enum DeterministicFormatter {
             .components(separatedBy: .newlines)
             .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ?? ""
 
-        var candidate = collapseWhitespace(firstLine)
-        if let sentence = sentences(in: candidate).first {
+        var candidate = TextShaping.collapseWhitespace(firstLine)
+        if let sentence = TextShaping.sentences(in: candidate).first {
             candidate = sentence
         }
-        return trimTrailingPunctuation(cap(candidate))
-    }
-
-    private static func cap(_ text: String) -> String {
-        guard text.count > maxTitleLength else { return text }
-
-        let limit = text.index(text.startIndex, offsetBy: maxTitleLength)
-        let truncated = text[text.startIndex..<limit]
-        if let lastSpace = truncated.lastIndex(of: " ") {
-            return String(truncated[truncated.startIndex..<lastSpace])
-        }
-        return String(truncated)
+        return trimTrailingPunctuation(TextShaping.truncate(candidate, to: maxTitleLength))
     }
 
     private static func trimTrailingPunctuation(_ text: String) -> String {
@@ -63,45 +52,19 @@ enum DeterministicFormatter {
 
     // MARK: - Body
 
-    private static func paragraphs(in text: String) -> [String] {
-        text
-            .components(separatedBy: "\n\n")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-    }
-
     /// Text that already has line breaks is treated as a list — one bullet
     /// per line. Text on a single line is split into sentences instead.
     private static func bullets(in paragraph: String) -> [String] {
         let lines = paragraph
             .components(separatedBy: .newlines)
-            .map { collapseWhitespace($0) }
+            .map { TextShaping.collapseWhitespace($0) }
             .filter { !$0.isEmpty }
 
         if lines.count > 1 {
             return lines
         }
         let single = lines.first ?? ""
-        let sentenceList = sentences(in: single)
+        let sentenceList = TextShaping.sentences(in: single)
         return sentenceList.isEmpty ? (single.isEmpty ? [] : [single]) : sentenceList
-    }
-
-    private static func sentences(in text: String) -> [String] {
-        var result: [String] = []
-        text.enumerateSubstrings(in: text.startIndex..<text.endIndex, options: [.bySentences, .localized]) { substring, _, _, _ in
-            guard let substring else { return }
-            let trimmed = substring.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                result.append(trimmed)
-            }
-        }
-        return result
-    }
-
-    private static func collapseWhitespace(_ text: String) -> String {
-        text
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
     }
 }

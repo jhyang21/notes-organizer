@@ -20,26 +20,13 @@ enum NoteFilename {
             forbidden.contains(scalar) || CharacterSet.controlCharacters.contains(scalar) ? " " : scalar
         }))
 
-        let collapsed = replaced
-            .components(separatedBy: .whitespacesAndNewlines)
-            .filter { !$0.isEmpty }
-            .joined(separator: " ")
+        let collapsed = TextShaping.collapseWhitespace(replaced)
 
         // A leading dot would make a hidden file; trailing dots and spaces
         // are silently dropped by some filesystems.
-        let trimmed = cap(collapsed).trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+        let trimmed = TextShaping.truncate(collapsed, to: maxLength)
+            .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
 
         return trimmed.isEmpty ? fallbackName : trimmed
-    }
-
-    private static func cap(_ text: String) -> String {
-        guard text.count > maxLength else { return text }
-
-        let limit = text.index(text.startIndex, offsetBy: maxLength)
-        let truncated = text[text.startIndex..<limit]
-        if let lastSpace = truncated.lastIndex(of: " ") {
-            return String(truncated[truncated.startIndex..<lastSpace])
-        }
-        return String(truncated)
     }
 }
