@@ -19,10 +19,6 @@ public struct UserDefaultsDiagnosticsStorage: DiagnosticsStorage, @unchecked Sen
     // hence `@unchecked` rather than a lock of our own.
     private let defaults: UserDefaults?
 
-    public init(suiteName: String) {
-        self.defaults = UserDefaults(suiteName: suiteName)
-    }
-
     public init(defaults: UserDefaults?) {
         self.defaults = defaults
     }

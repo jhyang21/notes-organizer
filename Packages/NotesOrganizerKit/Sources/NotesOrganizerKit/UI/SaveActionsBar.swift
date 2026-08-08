@@ -14,9 +14,9 @@ import UIKit
 /// sheet, no `UIViewControllerRepresentable`, and it stays extension-safe
 /// for M6.
 public struct SaveActionsBar: View {
-    /// Which way out the user took. Reported so the share extension can log
-    /// it — once the extension closes there is no other way to know whether
-    /// the share sheet ever opened.
+    /// Which way out the user took. Recorded because once the share sheet
+    /// takes over there is no other way to know which one they picked — and
+    /// in the extension, no way to know it opened at all.
     public enum Action: String, Sendable {
         case saveToNotes
         case copyAsText
@@ -24,16 +24,24 @@ public struct SaveActionsBar: View {
     }
 
     private let note: OrganizedNote
-    private let onAction: ((Action) -> Void)?
+    private let plainText: String
+    private let source: DiagnosticsSource
+    private let log: DiagnosticsLog
 
     @State private var markdownURL: URL?
     @State private var couldNotWriteFile = false
     @State private var showCopiedConfirmation = false
-    @AppStorage("notesorganizer.hasSeenNotesImportHint") private var hasSeenImportHint = false
 
-    public init(note: OrganizedNote, onAction: ((Action) -> Void)? = nil) {
+    // The App Group suite, so seeing the hint in the app also counts as
+    // seeing it in the share extension.
+    @AppStorage("notesorganizer.hasSeenNotesImportHint", store: AppGroup.defaults)
+    private var hasSeenImportHint = false
+
+    public init(note: OrganizedNote, source: DiagnosticsSource, log: DiagnosticsLog = .shared) {
         self.note = note
-        self.onAction = onAction
+        self.plainText = PlainTextRenderer.render(note)
+        self.source = source
+        self.log = log
     }
 
     public var body: some View {
@@ -42,8 +50,7 @@ public struct SaveActionsBar: View {
             secondaryActions
         }
         .task {
-            NoteShareItem.removeStaleFiles()
-            prepareMarkdownFile()
+            await prepareMarkdownFile()
         }
     }
 
@@ -60,7 +67,7 @@ public struct SaveActionsBar: View {
             .controlSize(.large)
             .simultaneousGesture(TapGesture().onEnded {
                 hasSeenImportHint = true
-                onAction?(.saveToNotes)
+                record(.saveToNotes)
             })
 
             if !hasSeenImportHint {
@@ -95,45 +102,55 @@ public struct SaveActionsBar: View {
             }
             .buttonStyle(.bordered)
 
-            ShareLink(item: PlainTextRenderer.render(note)) {
+            ShareLink(item: plainText) {
                 Label("Share as text", systemImage: "text.alignleft")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
             .simultaneousGesture(TapGesture().onEnded {
-                onAction?(.shareAsText)
+                record(.shareAsText)
             })
         }
     }
 
     // MARK: - Actions
 
-    private func prepareMarkdownFile() {
-        do {
-            markdownURL = try NoteShareItem.makeMarkdownFile(for: note)
-            couldNotWriteFile = false
-        } catch {
-            markdownURL = nil
-            couldNotWriteFile = true
-        }
+    /// Sweeping and writing are both synchronous `FileManager` work, so they
+    /// run off the main actor; only the resulting state comes back to it.
+    private func prepareMarkdownFile() async {
+        let note = self.note
+        let url = await Task.detached(priority: .userInitiated) { () -> URL? in
+            NoteShareItem.removeStaleFiles()
+            return try? NoteShareItem.makeMarkdownFile(for: note)
+        }.value
+
+        markdownURL = url
+        couldNotWriteFile = url == nil
     }
 
     private func copyAsText() {
-        UIPasteboard.general.string = PlainTextRenderer.render(note)
-        onAction?(.copyAsText)
+        UIPasteboard.general.string = plainText
+        record(.copyAsText)
         showCopiedConfirmation = true
         Task {
             try? await Task.sleep(for: .seconds(2))
             showCopiedConfirmation = false
         }
     }
+
+    private func record(_ action: Action) {
+        log.recordEvent(source: source, message: "Save action: \(action.rawValue)")
+    }
 }
 
 #Preview {
-    SaveActionsBar(note: OrganizedNote(
-        title: "Kitchen Renovation Notes",
-        sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4,200 for cabinets"])],
-        actionItems: ["Call the contractor back on Thursday"]
-    ))
+    SaveActionsBar(
+        note: OrganizedNote(
+            title: "Kitchen Renovation Notes",
+            sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4,200 for cabinets"])],
+            actionItems: ["Call the contractor back on Thursday"]
+        ),
+        source: .app
+    )
     .padding()
 }

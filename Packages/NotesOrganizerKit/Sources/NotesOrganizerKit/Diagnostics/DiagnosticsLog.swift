@@ -98,12 +98,11 @@ public struct DiagnosticsEvent: Codable, Equatable, Sendable, Identifiable {
 /// are best effort: nothing here is worth failing a user's note over, so an
 /// encoding failure or a missing App Group suite is silently a no-op.
 public struct DiagnosticsLog: Sendable {
-    public static let appGroupIdentifier = "group.com.immform.notesorganizer"
     public static let defaultLimit = 20
 
     /// The instance both targets use.
     public static let shared = DiagnosticsLog(
-        storage: UserDefaultsDiagnosticsStorage(suiteName: DiagnosticsLog.appGroupIdentifier)
+        storage: UserDefaultsDiagnosticsStorage(defaults: AppGroup.defaults)
     )
 
     private enum Key {
