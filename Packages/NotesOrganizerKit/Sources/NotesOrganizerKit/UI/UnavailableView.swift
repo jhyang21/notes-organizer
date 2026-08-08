@@ -3,6 +3,7 @@ import UIKit
 
 /// What the user sees when there is no note to show: no Apple Intelligence
 /// on the device, a model that isn't ready, or nothing worth organizing.
+/// A `NoticeView` plus the copy and the way forward for each `OrganizeFailure`.
 ///
 /// Every case except `deviceNotEligible` offers a way forward, and the way
 /// forward is specific — "Open Settings" when Apple Intelligence is off,
@@ -20,20 +21,7 @@ public struct UnavailableView: View {
     }
 
     public var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: symbolName)
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-
-            Text(title)
-                .font(.headline)
-                .multilineTextAlignment(.center)
-
-            Text(message)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
+        NoticeView(symbol: symbolName, title: title, message: message) {
             actions
         }
         .padding()
@@ -56,7 +44,7 @@ public struct UnavailableView: View {
             }
             .buttonStyle(.borderedProminent)
 
-        case .modelNotReady, .contextOverflow, .overSummarized:
+        case .modelNotReady, .contextOverflow:
             retryButton(title: "Try again")
 
         case .emptyTranscript:
@@ -81,7 +69,6 @@ public struct UnavailableView: View {
         case .modelNotReady: "clock.arrow.circlepath"
         case .emptyTranscript: "mic.slash"
         case .contextOverflow: "doc.text.magnifyingglass"
-        case .overSummarized: "exclamationmark.triangle"
         }
     }
 
@@ -92,7 +79,6 @@ public struct UnavailableView: View {
         case .modelNotReady: "The model isn't ready yet"
         case .emptyTranscript: "We didn't catch anything"
         case .contextOverflow: "That note is too long"
-        case .overSummarized: "That didn't come out right"
         }
     }
 
@@ -108,8 +94,6 @@ public struct UnavailableView: View {
             "There wasn't enough there to organize. Record again and speak for a few seconds."
         case .contextOverflow:
             "This one is long enough that it won't fit in a single pass. Try splitting it into two notes."
-        case .overSummarized:
-            "The organized note kept losing detail. Try again."
         }
     }
 }

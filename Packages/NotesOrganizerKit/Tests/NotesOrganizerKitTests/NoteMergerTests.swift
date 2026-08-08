@@ -84,19 +84,8 @@ struct NoteMergerTests {
         #expect(NoteMerger.merge(notes).title == "Real Title")
     }
 
-    @Test("titleOverride wins over any chunk title")
-    func titleOverrideWins() {
-        let notes = [OrganizedNote(title: "Chunk Title")]
-
-        #expect(NoteMerger.merge(notes, titleOverride: "Refined Title").title == "Refined Title")
-    }
-
     @Test("merging an empty array yields an empty note")
     func mergingEmptyArray() {
-        let merged = NoteMerger.merge([])
-        #expect(merged == OrganizedNote(title: ""))
-
-        let overridden = NoteMerger.merge([], titleOverride: "Still Empty")
-        #expect(overridden == OrganizedNote(title: "Still Empty"))
+        #expect(NoteMerger.merge([]) == OrganizedNote(title: ""))
     }
 }
