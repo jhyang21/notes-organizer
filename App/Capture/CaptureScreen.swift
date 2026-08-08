@@ -13,28 +13,44 @@ struct CaptureScreen: View {
     }
 
     var body: some View {
-        VStack(spacing: 24) {
-            switch viewModel.state {
-            case .idle:
-                idleView
-            case .requestingPermissions:
-                statusView(message: "Requesting microphone access…")
-            case .downloadingAssets(let progress):
-                downloadingView(progress: progress)
-            case .recording(let liveTranscript, let level, let elapsed):
-                recordingView(liveTranscript: liveTranscript, level: level, elapsed: elapsed)
-            case .organizing:
-                statusView(message: "Organizing your note…")
-            case .preview(let note):
-                previewView(note: note)
-            case .saved:
-                savedView
-            case .failed(let failure):
-                failedView(failure: failure)
+        NavigationStack {
+            VStack(spacing: 24) {
+                switch viewModel.state {
+                case .idle:
+                    idleView
+                case .requestingPermissions:
+                    statusView(message: "Requesting microphone access…")
+                case .downloadingAssets(let progress):
+                    downloadingView(progress: progress)
+                case .recording(let liveTranscript, let level, let elapsed):
+                    recordingView(liveTranscript: liveTranscript, level: level, elapsed: elapsed)
+                case .organizing:
+                    statusView(message: "Organizing your note…")
+                case .preview(let note):
+                    previewView(note: note)
+                case .saved:
+                    savedView
+                case .failed(let failure):
+                    failedView(failure: failure)
+                }
+            }
+            .padding()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .animation(.default, value: viewModel.state)
+            // An empty inline title keeps the bar out of the way; the capture
+            // screen names itself.
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    NavigationLink {
+                        DiagnosticsScreen()
+                    } label: {
+                        Image(systemName: "stethoscope")
+                    }
+                    .accessibilityLabel("Diagnostics")
+                }
             }
         }
-        .padding()
-        .animation(.default, value: viewModel.state)
         .task {
             viewModel.checkModelAvailability()
         }
