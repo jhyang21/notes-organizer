@@ -27,12 +27,6 @@ public enum OrganizeFailure: Error, Equatable, Sendable {
     /// A single chunk still exceeds the hard per-call token ceiling after
     /// chunking, so it can't be sent to the model.
     case contextOverflow(estimatedTokenCount: Int)
-
-    /// The model's output kept losing content even after a retry — see
-    /// `OutputSanitizer.isOverSummarized`. In normal operation this is
-    /// masked by the deterministic formatting fallback, so callers should
-    /// rarely see it thrown.
-    case overSummarized(inputWordCount: Int, outputWordCount: Int)
 }
 
 /// A configurable `NoteOrganizing` stand-in for tests and SwiftUI previews.

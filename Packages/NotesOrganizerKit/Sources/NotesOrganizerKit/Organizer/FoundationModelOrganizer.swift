@@ -75,6 +75,13 @@ public struct FoundationModelOrganizer: NoteOrganizing {
 
 #if canImport(FoundationModels)
 
+/// The model produced nothing this app can use for this text — a refusal, an
+/// undecodable response, an unrecognized generation error. Private to this
+/// file because it is a routing signal, not a failure the user ever sees:
+/// `organizeSingleCall` catches it and falls back to the deterministic
+/// formatter, which hands the user back every word they gave.
+private struct NoUsableNote: Error {}
+
 extension FoundationModelOrganizer {
     // MARK: - Routing
 
@@ -97,10 +104,8 @@ extension FoundationModelOrganizer {
             let generated: OrganizedNote
             do {
                 generated = try await generateNote(from: transcript, instructions: instructions)
-            } catch let failure as OrganizeFailure {
-                // The model produced nothing usable for this text. Falling
-                // back keeps every word; failing would throw them away.
-                guard case .overSummarized = failure else { throw failure }
+            } catch is NoUsableNote {
+                // Falling back keeps every word; failing would throw them away.
                 return fallback(for: transcript)
             }
 
@@ -172,10 +177,8 @@ extension FoundationModelOrganizer {
 
     // MARK: - Model call + error mapping
 
-    /// Maps every `FoundationModels` error onto the app's own vocabulary.
-    /// `.overSummarized` is reused as the internal "this content produced no
-    /// usable note" signal — `organizeSingleCall` catches it and falls back,
-    /// so it never escapes to a caller.
+    /// Maps every `FoundationModels` error onto either the app's own failure
+    /// vocabulary or `NoUsableNote`.
     private func generateNote(from transcript: String, instructions: String) async throws -> OrganizedNote {
         do {
             let session = LanguageModelSession(instructions: instructions)
@@ -192,7 +195,7 @@ extension FoundationModelOrganizer {
             // An unrecognized generation failure still leaves the transcript
             // intact, so treat it as "no usable note" and let the caller
             // fall back rather than surfacing a system error string.
-            throw OrganizeFailure.overSummarized(inputWordCount: 0, outputWordCount: 0)
+            throw NoUsableNote()
         }
     }
 
@@ -210,7 +213,7 @@ extension FoundationModelOrganizer {
             // model for this text. Deliberately *not* a distinct user-facing
             // failure — the deterministic fallback gives the user their
             // content back, which beats an error screen explaining a refusal.
-            return OrganizeFailure.overSummarized(inputWordCount: 0, outputWordCount: 0)
+            return NoUsableNote()
         }
     }
 

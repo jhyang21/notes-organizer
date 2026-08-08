@@ -3,24 +3,24 @@ import Foundation
 import NotesOrganizerKit
 import Observation
 
-/// Reasons a capture can't produce a note, on top of `OrganizeFailure` (M3)
-/// covering everything upstream of the organizer: permissions, model-asset
-/// download, and the audio pipeline itself.
+/// Reasons a capture can't produce a note that are the app's own —
+/// permissions, model-asset download, the audio pipeline. Everything from the
+/// organizer onwards is an `OrganizeFailure`, which the package's
+/// `UnavailableView` already has copy and an action for.
 enum CaptureFailure: Equatable {
     case microphonePermissionDenied
     case assetsUnsupported
     case assetDownloadFailed(String)
     case captureFailed(String)
     case emptyRecording
-    case organizeFailed(OrganizeFailure)
 }
 
 /// Drives the capture flow end to end: idle → requestingPermissions →
-/// downloadingAssets → recording → organizing → preview → saved, or
-/// failed at any step. Owns `AudioCaptureService`, `TranscriptionService`,
-/// and `SpeechAssetManager`; the organizer is injected via `NoteOrganizing`
-/// so M5 can swap `MockOrganizer` for the real on-device organizer without
-/// touching this type.
+/// downloadingAssets → recording → organizing → preview, or failed at any
+/// step. Owns `AudioCaptureService`, `TranscriptionService`, and
+/// `SpeechAssetManager`; the organizer is injected via `NoteOrganizing` so
+/// tests and previews can swap `MockOrganizer` for the real on-device
+/// organizer without touching this type.
 @MainActor
 @Observable
 final class CaptureViewModel {
@@ -31,13 +31,13 @@ final class CaptureViewModel {
         case recording(liveTranscript: String, level: Float, elapsed: Duration)
         case organizing
         case preview(OrganizedNote)
-        case saved
         case failed(CaptureFailure)
+        case unavailable(OrganizeFailure)
     }
 
     private(set) var state: State = .idle
 
-    private let organizer: NoteOrganizing
+    private let organizeRun: OrganizeRun
     private let locale: Locale
     private let audioCapture: AudioCaptureService
     private let transcription: TranscriptionService
@@ -49,8 +49,12 @@ final class CaptureViewModel {
     private var recordingTasks: [Task<Void, Never>] = []
     private var isFinishingRecording = false
 
-    init(organizer: NoteOrganizing = FoundationModelOrganizer(), locale: Locale = .current) {
-        self.organizer = organizer
+    init(
+        organizer: NoteOrganizing = FoundationModelOrganizer(),
+        log: DiagnosticsLog = .shared,
+        locale: Locale = .current
+    ) {
+        self.organizeRun = OrganizeRun(organizer: organizer, source: .app, log: log)
         self.locale = locale
         self.audioCapture = AudioCaptureService()
         self.transcription = TranscriptionService(locale: locale)
@@ -69,7 +73,7 @@ final class CaptureViewModel {
     func checkModelAvailability() {
         guard case .idle = state else { return }
         guard let failure = ModelAvailability.currentFailure() else { return }
-        state = .failed(.organizeFailed(failure))
+        state = .unavailable(failure)
     }
 
     func startCapture() {
@@ -233,20 +237,14 @@ final class CaptureViewModel {
         }
 
         state = .organizing
-        let wordCount = WordCounter.count(trimmed)
-        let startedOrganizing = clock.now
-        do {
-            let note = try await organizer.organize(trimmed)
-            DiagnosticsLog.shared.recordOrganizeTiming(
-                source: .app,
-                wordCount: wordCount,
-                duration: (clock.now - startedOrganizing).totalSeconds
-            )
-            state = .preview(note)
-        } catch let failure as OrganizeFailure {
-            state = .failed(.organizeFailed(failure))
-        } catch {
-            state = .failed(.organizeFailed(.modelNotReady(reason: error.localizedDescription)))
+        switch await organizeRun.run(trimmed) {
+        case .success(let outcome):
+            state = .preview(outcome.note)
+        case .failure(let failure):
+            state = .unavailable(failure)
+        case nil:
+            // Cancelled — `reset()` has already put the machine back to idle.
+            break
         }
     }
 }

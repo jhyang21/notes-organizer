@@ -41,6 +41,21 @@ struct TranscriptChunker {
             return [trimmed]
         }
 
+        let packed = pack(
+            TextShaping.paragraphs(in: trimmed),
+            separator: "\n\n",
+            recover: splitOversizedParagraph
+        )
+        return withSentenceOverlap(packed)
+    }
+
+    // MARK: - Greedy packing
+
+    /// Accumulates `units` into chunks up to `budget.targetTokensPerChunk`,
+    /// flushing when the next unit won't fit. A unit that alone exceeds the
+    /// hard ceiling can't be packed at all, so `recover` splits it at a finer
+    /// granularity and its pieces are emitted on their own.
+    private func pack(_ units: [String], separator: String, recover: (String) -> [String]) -> [String] {
         var chunks: [String] = []
         var current = ""
 
@@ -52,77 +67,24 @@ struct TranscriptChunker {
             current = ""
         }
 
-        for paragraph in paragraphs(in: trimmed) {
-            if tokenEstimator.tokenCount(paragraph) > budget.hardCeilingTokens {
+        for unit in units {
+            if tokenEstimator.tokenCount(unit) > budget.hardCeilingTokens {
                 flushCurrent()
-                chunks.append(contentsOf: splitOversizedParagraph(paragraph))
+                chunks.append(contentsOf: recover(unit))
                 continue
             }
 
             if current.isEmpty {
-                current = paragraph
+                current = unit
                 continue
             }
 
-            let candidate = current + "\n\n" + paragraph
+            let candidate = current + separator + unit
             if tokenEstimator.tokenCount(candidate) <= budget.targetTokensPerChunk {
                 current = candidate
             } else {
                 flushCurrent()
-                current = paragraph
-            }
-        }
-        flushCurrent()
-
-        return withSentenceOverlap(chunks)
-    }
-
-    // MARK: - Paragraph splitting
-
-    private func paragraphs(in text: String) -> [String] {
-        text
-            .components(separatedBy: "\n\n")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-    }
-
-    // MARK: - Sentence splitting (oversized paragraphs)
-
-    private func splitOversizedParagraph(_ paragraph: String) -> [String] {
-        let sentenceList = sentences(in: paragraph)
-        guard !sentenceList.isEmpty else {
-            return hardCharacterSplit(paragraph)
-        }
-
-        var chunks: [String] = []
-        var current = ""
-
-        func flushCurrent() {
-            let piece = current.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !piece.isEmpty {
-                chunks.append(piece)
-            }
-            current = ""
-        }
-
-        for sentence in sentenceList {
-            if tokenEstimator.tokenCount(sentence) > budget.hardCeilingTokens {
-                flushCurrent()
-                chunks.append(contentsOf: hardCharacterSplit(sentence))
-                continue
-            }
-
-            if current.isEmpty {
-                current = sentence
-                continue
-            }
-
-            let candidate = current + " " + sentence
-            if tokenEstimator.tokenCount(candidate) <= budget.targetTokensPerChunk {
-                current = candidate
-            } else {
-                flushCurrent()
-                current = sentence
+                current = unit
             }
         }
         flushCurrent()
@@ -130,16 +92,14 @@ struct TranscriptChunker {
         return chunks
     }
 
-    private func sentences(in text: String) -> [String] {
-        var result: [String] = []
-        text.enumerateSubstrings(in: text.startIndex..<text.endIndex, options: [.bySentences, .localized]) { substring, _, _, _ in
-            guard let substring else { return }
-            let trimmed = substring.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                result.append(trimmed)
-            }
+    // MARK: - Sentence splitting (oversized paragraphs)
+
+    private func splitOversizedParagraph(_ paragraph: String) -> [String] {
+        let sentenceList = TextShaping.sentences(in: paragraph)
+        guard !sentenceList.isEmpty else {
+            return hardCharacterSplit(paragraph)
         }
-        return result
+        return pack(sentenceList, separator: " ", recover: hardCharacterSplit)
     }
 
     // MARK: - Degenerate fallback: no sentence/paragraph boundaries at all
@@ -179,7 +139,7 @@ struct TranscriptChunker {
 
         var result = chunks
         for index in 1..<result.count {
-            guard let overlap = sentences(in: chunks[index - 1]).last else { continue }
+            guard let overlap = TextShaping.sentences(in: chunks[index - 1]).last else { continue }
             result[index] = overlap + " " + result[index]
         }
         return result

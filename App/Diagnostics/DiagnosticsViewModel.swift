@@ -41,13 +41,12 @@ final class DiagnosticsViewModel {
     private(set) var organizeTimings: [OrganizeTiming] = []
     private(set) var events: [DiagnosticsEvent] = []
 
-    private let organizer: NoteOrganizing
     private let log: DiagnosticsLog
-    private let clock = ContinuousClock()
+    private let organizeRun: OrganizeRun
 
     init(organizer: NoteOrganizing = FoundationModelOrganizer(), log: DiagnosticsLog = .shared) {
-        self.organizer = organizer
         self.log = log
+        self.organizeRun = OrganizeRun(organizer: organizer, source: .app, log: log)
     }
 
     // MARK: - Refresh
@@ -77,25 +76,19 @@ final class DiagnosticsViewModel {
     }
 
     private func run(_ sample: String) async -> RunState {
-        let words = WordCounter.count(sample)
-        let started = clock.now
-        do {
-            let note = try await organizer.organize(sample)
-            let seconds = (clock.now - started).totalSeconds
-            log.recordOrganizeTiming(source: .app, wordCount: words, duration: seconds)
+        switch await organizeRun.run(sample) {
+        case .success(let outcome):
             return .succeeded(RunResult(
-                seconds: seconds,
-                wordCount: words,
-                title: note.title,
-                sectionCount: note.sections.count,
-                actionItemCount: note.actionItems.count
+                seconds: outcome.duration,
+                wordCount: outcome.wordCount,
+                title: outcome.note.title,
+                sectionCount: outcome.note.sections.count,
+                actionItemCount: outcome.note.actionItems.count
             ))
-        } catch let failure as OrganizeFailure {
-            log.recordEvent(source: .app, message: "Sample run failed: \(failure)")
+        case .failure(let failure):
             return .failed("\(failure)")
-        } catch {
-            log.recordEvent(source: .app, message: "Sample run error: \(error.localizedDescription)")
-            return .failed(error.localizedDescription)
+        case nil:
+            return .idle
         }
     }
 

@@ -3,16 +3,13 @@ import Foundation
 /// Recombines the per-chunk `OrganizedNote`s from `TranscriptChunker` back
 /// into one note. Pure and deterministic — no model calls.
 enum NoteMerger {
-    /// - Parameter titleOverride: the model-based title refinement pass
-    ///   (M5's `NoteTitle` generation over the chunk titles) belongs to the
-    ///   caller, not to this merge step. Pass its result here; when omitted,
-    ///   the title falls back to the first chunk with a non-empty title.
-    static func merge(_ notes: [OrganizedNote], titleOverride: String? = nil) -> OrganizedNote {
-        guard !notes.isEmpty else {
-            return OrganizedNote(title: titleOverride ?? "")
-        }
+    /// The title falls back to the first chunk with a non-empty title. The
+    /// model-based title refinement pass belongs to the caller, not to this
+    /// merge step.
+    static func merge(_ notes: [OrganizedNote]) -> OrganizedNote {
+        guard !notes.isEmpty else { return OrganizedNote() }
 
-        let title = titleOverride ?? notes.first { !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }?.title ?? ""
+        let title = notes.first { !$0.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }?.title ?? ""
 
         return OrganizedNote(
             title: title,
