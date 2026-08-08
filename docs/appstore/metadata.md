@@ -9,7 +9,7 @@ so the two never drift.
 | Field | Value | Limit |
 |---|---|---|
 | App name | `TidyNote - Notes Organizer` | 30 |
-| Subtitle | `Tidy up messy notes fast` | 30 |
+| Subtitle | `Voice memo to clean outline` | 30 |
 | Support URL | `https://jhyang21.github.io/notes-organizer/` | — |
 | Marketing URL | `https://jhyang21.github.io/notes-organizer/` | — |
 | Privacy Policy URL | `https://jhyang21.github.io/notes-organizer/privacy.html` | — |
@@ -31,12 +31,14 @@ Ramble into your phone and get a clean note back: title, headings, bullets, and 
 ## Keywords (100 max, comma-separated, no spaces)
 
 ```
-voice,memo,dictation,transcribe,speech,outline,bullets,structure,format,meeting,ideas,brain dump
+dictation,transcribe,speech,bullets,structure,format,meeting,ideas,brain dump,audio,journal,recorder
 ```
 
-Words already in the name and subtitle — tidy, note, notes, organizer, messy,
-fast — are deliberately left out; Apple indexes those from the name and subtitle
-already, and repeating them wastes the budget.
+Apple indexes the name, the subtitle, and this field together, so a word in any
+one of them is wasted in the others. Nothing here repeats tidy, note, notes, or
+organizer (from the name), or voice, memo, clean, or outline (from the
+subtitle). The subtitle was rewritten for the same reason: the earlier "Tidy up
+messy notes fast" spent its 30 characters on words the name already carried.
 
 ## Description (4000 max)
 
