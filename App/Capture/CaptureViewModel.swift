@@ -233,8 +233,15 @@ final class CaptureViewModel {
         }
 
         state = .organizing
+        let wordCount = WordCounter.count(trimmed)
+        let startedOrganizing = clock.now
         do {
             let note = try await organizer.organize(trimmed)
+            DiagnosticsLog.shared.recordOrganizeTiming(
+                source: .app,
+                wordCount: wordCount,
+                duration: (clock.now - startedOrganizing).totalSeconds
+            )
             state = .preview(note)
         } catch let failure as OrganizeFailure {
             state = .failed(.organizeFailed(failure))

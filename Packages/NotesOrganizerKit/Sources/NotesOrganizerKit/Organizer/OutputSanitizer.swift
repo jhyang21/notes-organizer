@@ -70,17 +70,13 @@ enum OutputSanitizer {
     /// a coarse heuristic, not a semantic check — it exists to catch a
     /// model that summarized instead of organized, not to validate content.
     static func isOverSummarized(input: String, output: OrganizedNote) -> Bool {
-        let inputWordCount = wordCount(input)
+        let inputWordCount = WordCounter.count(input)
         guard inputWordCount > 0 else { return false }
 
         let outputText = ([output.title] + output.sections.flatMap { [$0.heading] + $0.bullets } + output.actionItems)
             .joined(separator: " ")
-        let outputWordCount = wordCount(outputText)
+        let outputWordCount = WordCounter.count(outputText)
 
         return Double(outputWordCount) < Double(inputWordCount) * 0.6
-    }
-
-    private static func wordCount(_ text: String) -> Int {
-        text.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).count
     }
 }

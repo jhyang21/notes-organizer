@@ -14,15 +14,26 @@ import UIKit
 /// sheet, no `UIViewControllerRepresentable`, and it stays extension-safe
 /// for M6.
 public struct SaveActionsBar: View {
+    /// Which way out the user took. Reported so the share extension can log
+    /// it — once the extension closes there is no other way to know whether
+    /// the share sheet ever opened.
+    public enum Action: String, Sendable {
+        case saveToNotes
+        case copyAsText
+        case shareAsText
+    }
+
     private let note: OrganizedNote
+    private let onAction: ((Action) -> Void)?
 
     @State private var markdownURL: URL?
     @State private var couldNotWriteFile = false
     @State private var showCopiedConfirmation = false
     @AppStorage("notesorganizer.hasSeenNotesImportHint") private var hasSeenImportHint = false
 
-    public init(note: OrganizedNote) {
+    public init(note: OrganizedNote, onAction: ((Action) -> Void)? = nil) {
         self.note = note
+        self.onAction = onAction
     }
 
     public var body: some View {
@@ -49,6 +60,7 @@ public struct SaveActionsBar: View {
             .controlSize(.large)
             .simultaneousGesture(TapGesture().onEnded {
                 hasSeenImportHint = true
+                onAction?(.saveToNotes)
             })
 
             if !hasSeenImportHint {
@@ -88,6 +100,9 @@ public struct SaveActionsBar: View {
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.bordered)
+            .simultaneousGesture(TapGesture().onEnded {
+                onAction?(.shareAsText)
+            })
         }
     }
 
@@ -105,6 +120,7 @@ public struct SaveActionsBar: View {
 
     private func copyAsText() {
         UIPasteboard.general.string = PlainTextRenderer.render(note)
+        onAction?(.copyAsText)
         showCopiedConfirmation = true
         Task {
             try? await Task.sleep(for: .seconds(2))
