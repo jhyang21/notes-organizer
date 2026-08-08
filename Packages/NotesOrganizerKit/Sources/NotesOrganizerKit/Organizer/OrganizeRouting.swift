@@ -95,7 +95,11 @@ public struct OrganizeRouting: Sendable {
         }
     }
 
-    // MARK: - Consent
+    // MARK: - Plan and consent
+
+    /// What the app last heard from RevenueCat. Drives what the UI says, never
+    /// what the server allows — that is re-checked on every call.
+    public var isPro: Bool { store.isPro() }
 
     public func setCloudConsentGranted(_ granted: Bool) {
         store.setCloudConsentGranted(granted)

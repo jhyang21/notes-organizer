@@ -7,8 +7,12 @@ import UIKit
 /// state at any point. Mirrors `CaptureViewModel` in the app, minus
 /// everything to do with recording — the text arrives already written.
 ///
-/// The organizer is injected the same way the app injects it, so a preview
-/// can use `MockOrganizer` on a machine with no model.
+/// Routing is injected the same way the app injects it, so a preview can use
+/// `MockOrganizer` on a machine with no model.
+///
+/// The one thing this can't do that the app can is ask. There is no
+/// RevenueCat SDK here and no consent sheet: it reads what the app wrote to
+/// the App Group, and where that says "not yet" it points at the app.
 @MainActor
 @Observable
 final class ShareViewModel {
@@ -27,11 +31,11 @@ final class ShareViewModel {
     private(set) var originalText = ""
 
     private let log: DiagnosticsLog
-    private let organizeRun: OrganizeRun
+    private let routing: OrganizeRouting
 
-    init(organizer: NoteOrganizing = FoundationModelOrganizer(), log: DiagnosticsLog = .shared) {
+    init(routing: OrganizeRouting = OrganizeRouting(), log: DiagnosticsLog = .shared) {
         self.log = log
-        self.organizeRun = OrganizeRun(organizer: organizer, source: .shareExtension, log: log)
+        self.routing = routing
     }
 
     // MARK: - Flow
@@ -53,12 +57,23 @@ final class ShareViewModel {
     }
 
     func retry() async {
+        await rerun(preference: .automatic)
+    }
+
+    /// "Try a premium tidy" on the on-device-failure screen. If the app hasn't
+    /// been opened to agree to premium tidies, the route says so and the user
+    /// gets told where to go — nothing is sent on a guess.
+    func requestPremiumTidy() async {
+        await rerun(preference: .forceCloud)
+    }
+
+    private func rerun(preference: RoutingPolicy.Preference) async {
         let trimmed = originalText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             state = .nothingToOrganize
             return
         }
-        await organize(trimmed)
+        await organize(trimmed, preference: preference)
     }
 
     func copyOriginalText() {
@@ -72,13 +87,23 @@ final class ShareViewModel {
     /// system process, so the extension's memory limit isn't the constraint
     /// it would be for a model loaded in-process.
     ///
-    /// No model-availability pre-check: the organizer makes the same check
-    /// first thing and throws the same failure, so asking here would only
-    /// log the one condition twice.
-    private func organize(_ text: String) async {
+    /// The availability check that used to be left to the organizer happens
+    /// here now, because the route needs it: whether this iPhone can tidy on
+    /// its own is half of what decides where the text goes.
+    private func organize(_ text: String, preference: RoutingPolicy.Preference = .automatic) async {
+        let route = routing.route(preference: preference, onDeviceFailure: ModelAvailability.currentFailure())
+
+        // Consent is a conversation, and this process can't have one.
+        if case .consentNeeded = route {
+            log.recordEvent(source: .shareExtension, message: "Organize skipped: cloud consent not granted")
+            state = .unavailable(.cloudConsentNeeded)
+            return
+        }
+
         state = .organizing(wordCount: WordCounter.count(text))
 
-        switch await organizeRun.run(text) {
+        let organizer = routing.organizer(for: route, source: .shareExtension, log: log)
+        switch await OrganizeRun(organizer: organizer, source: .shareExtension, log: log).run(text) {
         case .success(let outcome):
             state = .preview(outcome.note)
         case .failure(let failure):
