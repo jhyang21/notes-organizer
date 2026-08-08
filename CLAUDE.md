@@ -63,14 +63,12 @@ it discovers a valid simulator name at runtime.
 `xcodegen generate` would clobber an `agvtool`-set version) →
 `upload_to_testflight`.
 
-`.github/workflows/testflight.yml` runs this lane. It is
-`workflow_dispatch`-only for now — trigger it manually from the Actions
-tab, or `gh workflow run testflight.yml`, once the secrets below exist.
-The `push: branches: [main]` trigger is deliberately left out until then;
-enable it once a manual run succeeds.
+`.github/workflows/testflight.yml` runs this lane on every push to main
+(and via `gh workflow run testflight.yml`). Build number =
+`github.run_number`.
 
 Required repo secrets (GitHub → Settings → Secrets and variables →
-Actions), none of which exist yet: `ASC_KEY_ID`, `ASC_ISSUER_ID`,
+Actions), all set 2026-08-08: `ASC_KEY_ID`, `ASC_ISSUER_ID`,
 `ASC_KEY_P8_BASE64` (the App Store Connect API key, base64-encoded),
 `MATCH_PASSWORD`, `MATCH_GIT_TOKEN` (a PAT scoped to the certificates
 repo below).

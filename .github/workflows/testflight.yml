@@ -1,13 +1,9 @@
 name: TestFlight
 
-# Manual dispatch only for now: the Apple/App Store Connect account setup
-# (App IDs, ASC app record, API key) and the five repo secrets this
-# workflow needs (ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_P8_BASE64,
-# MATCH_PASSWORD, MATCH_GIT_TOKEN) don't exist yet. A `push: branches:
-# [main]` trigger would just fail on every merge until then, so it's left
-# out here. Add it back once the secrets are in place.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
 
 jobs:
   beta:
