@@ -9,15 +9,29 @@ import UIKit
 /// forward is specific — "Open Settings" when Apple Intelligence is off,
 /// "Record again" when we heard nothing. A generic "Try again" on a device
 /// that can never run the model would just waste the user's time.
+///
+/// Each action is a closure the caller may not have: a screen with no way to
+/// start a premium tidy passes `nil` and the button doesn't appear. No copy
+/// here names a model or a vendor — the user's vocabulary is "tidies" and
+/// "premium tidies".
 public struct UnavailableView: View {
     private let failure: OrganizeFailure
     private let onRetry: (() -> Void)?
+    private let onPremiumTidy: (() -> Void)?
+    private let onUpgrade: (() -> Void)?
 
     @Environment(\.openURL) private var openURL
 
-    public init(failure: OrganizeFailure, onRetry: (() -> Void)? = nil) {
+    public init(
+        failure: OrganizeFailure,
+        onRetry: (() -> Void)? = nil,
+        onPremiumTidy: (() -> Void)? = nil,
+        onUpgrade: (() -> Void)? = nil
+    ) {
         self.failure = failure
         self.onRetry = onRetry
+        self.onPremiumTidy = onPremiumTidy
+        self.onUpgrade = onUpgrade
     }
 
     public var body: some View {
@@ -44,11 +58,30 @@ public struct UnavailableView: View {
             }
             .buttonStyle(.borderedProminent)
 
-        case .modelNotReady, .contextOverflow:
+        case .modelNotReady, .contextOverflow, .networkUnavailable, .cloudUnavailable:
             retryButton(title: "Try again")
 
         case .emptyTranscript:
             retryButton(title: "Record again")
+
+        case .onDeviceFailed:
+            // A premium tidy is the only thing left that might organize this
+            // text, so it leads; the plain retry stays for a model that was
+            // merely having a bad minute.
+            if let onPremiumTidy {
+                Button("Try a premium tidy", action: onPremiumTidy)
+                    .buttonStyle(.borderedProminent)
+            }
+            if let onRetry {
+                Button("Try again", action: onRetry)
+                    .buttonStyle(.bordered)
+            }
+
+        case .cloudQuotaExhausted:
+            if let onUpgrade {
+                Button("See TidyNote Pro", action: onUpgrade)
+                    .buttonStyle(.borderedProminent)
+            }
         }
     }
 
@@ -69,6 +102,10 @@ public struct UnavailableView: View {
         case .modelNotReady: "clock.arrow.circlepath"
         case .emptyTranscript: "mic.slash"
         case .contextOverflow: "doc.text.magnifyingglass"
+        case .onDeviceFailed: "exclamationmark.triangle"
+        case .cloudQuotaExhausted: "sparkles"
+        case .networkUnavailable: "wifi.slash"
+        case .cloudUnavailable: "cloud.slash"
         }
     }
 
@@ -79,6 +116,10 @@ public struct UnavailableView: View {
         case .modelNotReady: "The model isn't ready yet"
         case .emptyTranscript: "We didn't catch anything"
         case .contextOverflow: "That note is too long"
+        case .onDeviceFailed: "Couldn't tidy this on your iPhone"
+        case .cloudQuotaExhausted: "You've used this month's premium tidies"
+        case .networkUnavailable: "You're offline"
+        case .cloudUnavailable: "The tidy service hit a snag"
         }
     }
 
@@ -94,6 +135,14 @@ public struct UnavailableView: View {
             "There wasn't enough there to organize. Record again and speak for a few seconds."
         case .contextOverflow:
             "This one is long enough that it won't fit in a single pass. Try splitting it into two notes."
+        case .onDeviceFailed:
+            "The on-device model couldn't organize this text without losing content. Nothing was lost."
+        case .cloudQuotaExhausted:
+            "They come back next month, or go unlimited with TidyNote Pro. Nothing was lost — your text is still here."
+        case .networkUnavailable:
+            "Premium tidies need an internet connection. Nothing was lost — try again when you're back online."
+        case .cloudUnavailable(let reason):
+            reason
         }
     }
 }
@@ -104,4 +153,12 @@ public struct UnavailableView: View {
 
 #Preview("Empty transcript") {
     UnavailableView(failure: .emptyTranscript, onRetry: {})
+}
+
+#Preview("On-device failed") {
+    UnavailableView(failure: .onDeviceFailed, onRetry: {}, onPremiumTidy: {})
+}
+
+#Preview("Quota exhausted") {
+    UnavailableView(failure: .cloudQuotaExhausted, onUpgrade: {})
 }

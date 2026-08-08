@@ -21,10 +21,10 @@ struct OverSummarizationPolicyTests {
         #expect(OverSummarizationPolicy.decide(input: input, output: note(words: 3), attempt: 0) == .retry)
     }
 
-    @Test("falls back once the retry also comes back too short")
-    func fallsBackAfterRetry() {
-        #expect(OverSummarizationPolicy.decide(input: input, output: note(words: 3), attempt: 1) == .fallback)
-        #expect(OverSummarizationPolicy.decide(input: input, output: note(words: 3), attempt: 2) == .fallback)
+    @Test("rejects once the retry also comes back too short")
+    func rejectsAfterRetry() {
+        #expect(OverSummarizationPolicy.decide(input: input, output: note(words: 3), attempt: 1) == .reject)
+        #expect(OverSummarizationPolicy.decide(input: input, output: note(words: 3), attempt: 2) == .reject)
     }
 
     @Test("never asks the model more than maxRetries extra times")
@@ -34,6 +34,6 @@ struct OverSummarizationPolicyTests {
         }
 
         #expect(decisions.filter { $0 == .retry }.count == OverSummarizationPolicy.maxRetries)
-        #expect(decisions.last == .fallback)
+        #expect(decisions.last == .reject)
     }
 }

@@ -46,10 +46,10 @@ public struct SharePayloadObservation: Codable, Equatable, Sendable, Identifiabl
 
 /// How long one organize took, and on how much text.
 ///
-/// There is no "used the fallback" flag: `FoundationModelOrganizer` returns
-/// the same `OrganizedNote` whether the model produced it or
-/// `DeterministicFormatter` did, and the caller can't tell them apart. Source,
-/// word count, and duration are what's honestly observable here.
+/// There is no "which organizer ran" flag: an `OrganizedNote` looks the same
+/// whether the on-device model or the cloud produced it, and `OrganizeRun`
+/// can't tell them apart. Source, word count, and duration are what's
+/// honestly observable here; a router that falls back writes its own event.
 public struct OrganizeTiming: Codable, Equatable, Sendable, Identifiable {
     public var id: UUID
     public var timestamp: Date

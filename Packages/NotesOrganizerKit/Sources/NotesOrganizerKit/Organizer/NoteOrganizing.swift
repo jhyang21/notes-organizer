@@ -27,6 +27,23 @@ public enum OrganizeFailure: Error, Equatable, Sendable {
     /// A single chunk still exceeds the hard per-call token ceiling after
     /// chunking, so it can't be sent to the model.
     case contextOverflow(estimatedTokenCount: Int)
+
+    /// The on-device model couldn't organize this text without losing
+    /// content — it refused it, returned something undecodable, or kept
+    /// summarizing after the retry. The transcript is untouched; the way
+    /// forward is a premium tidy.
+    case onDeviceFailed
+
+    /// This month's premium tidies are spent. A hard wall, not a delay: the
+    /// only ways past it are next month or a subscription.
+    case cloudQuotaExhausted
+
+    /// A premium tidy needs a connection and there isn't one.
+    case networkUnavailable
+
+    /// The premium tidy service answered with something other than a note.
+    /// `reason` is user-facing copy, so it names no vendor and no status code.
+    case cloudUnavailable(reason: String)
 }
 
 /// A configurable `NoteOrganizing` stand-in for tests and SwiftUI previews.
