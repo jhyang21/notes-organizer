@@ -20,9 +20,13 @@ packages:
   # The repo's only external dependency, and it belongs to the app alone.
   # The SPM-only mirror rather than `purchases-ios`, whose repository also
   # carries the Xcode project and its checked-in binaries.
+  #
+  # Pinned exactly: Package.resolved lives inside the generated (gitignored)
+  # .xcodeproj, so this line is the only lockfile the repo has. Upgrades are
+  # a deliberate edit here, not whatever CI resolves on release day.
   RevenueCat:
     url: https://github.com/RevenueCat/purchases-ios-spm.git
-    from: 5.0.0
+    exactVersion: 5.83.1
 
 targets:
   NotesOrganizer:
