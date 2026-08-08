@@ -1,10 +1,10 @@
 import NotesOrganizerKit
 import SwiftUI
 
-/// The single-screen capture flow: idle → recording → organizing →
-/// preview → saved. The preview, save actions, and unavailable states are
-/// all `NotesOrganizerKit` views, so the share extension (M6) shows the user
-/// the same screens the app does.
+/// The single-screen capture flow: idle → recording → organizing → preview.
+/// The preview, save actions, and unavailable states are all
+/// `NotesOrganizerKit` views, so the share extension shows the user the same
+/// screens the app does.
 struct CaptureScreen: View {
     @State private var viewModel: CaptureViewModel
 
@@ -28,10 +28,12 @@ struct CaptureScreen: View {
                     statusView(message: "Organizing your note…")
                 case .preview(let note):
                     previewView(note: note)
-                case .saved:
-                    savedView
                 case .failed(let failure):
-                    failedView(failure: failure)
+                    captureFailureView(failure: failure)
+                case .unavailable(let failure):
+                    UnavailableView(failure: failure) {
+                        viewModel.reset()
+                    }
                 }
             }
             .padding()
@@ -128,7 +130,7 @@ struct CaptureScreen: View {
             OrganizedNotePreviewView(note: note)
                 .frame(maxHeight: .infinity)
 
-            SaveActionsBar(note: note)
+            SaveActionsBar(note: note, source: .app)
 
             Button("New note") {
                 viewModel.reset()
@@ -137,47 +139,12 @@ struct CaptureScreen: View {
         }
     }
 
-    private var savedView: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.green)
-            Text("Saved")
-                .font(.headline)
-        }
-    }
-
-    /// Organizer failures get the package's `UnavailableView`, which owns the
-    /// per-reason copy and the right action for each (open Settings, retry,
-    /// record again). Everything upstream of the organizer — microphone,
-    /// speech assets, the audio pipeline — is app-only, so it keeps its own
-    /// view here.
-    @ViewBuilder
-    private func failedView(failure: CaptureFailure) -> some View {
-        if case .organizeFailed(let organizeFailure) = failure {
-            UnavailableView(failure: organizeFailure) {
-                viewModel.reset()
-            }
-        } else {
-            captureFailureView(failure: failure)
-        }
-    }
-
     private func captureFailureView(failure: CaptureFailure) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 48))
-                .foregroundStyle(.orange)
-
-            Text(failure.title)
-                .font(.headline)
-                .multilineTextAlignment(.center)
-
-            Text(failure.message)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-
+        NoticeView(
+            symbol: "exclamationmark.triangle",
+            title: failure.title,
+            message: failure.message
+        ) {
             Button("Try again") {
                 viewModel.reset()
             }
@@ -194,7 +161,6 @@ private extension CaptureFailure {
         case .assetDownloadFailed: "Couldn't download speech model"
         case .captureFailed: "Recording failed"
         case .emptyRecording: "We didn't catch anything"
-        case .organizeFailed: "Couldn't organize that note"
         }
     }
 
@@ -210,10 +176,6 @@ private extension CaptureFailure {
             reason
         case .emptyRecording:
             "Try again and speak for a moment before stopping."
-        case .organizeFailed:
-            // Unreachable: `failedView` routes organizer failures to
-            // `UnavailableView`, which has copy of its own for each reason.
-            "Something went wrong organizing that note."
         }
     }
 }

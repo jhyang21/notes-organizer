@@ -18,7 +18,6 @@ final class ShareViewModel {
         case preview(OrganizedNote)
         case nothingToOrganize
         case unavailable(OrganizeFailure)
-        case failed(message: String)
     }
 
     private(set) var state: State = .loading
@@ -27,13 +26,12 @@ final class ShareViewModel {
     /// leaves the user holding nothing.
     private(set) var originalText = ""
 
-    private let organizer: NoteOrganizing
     private let log: DiagnosticsLog
-    private let clock = ContinuousClock()
+    private let organizeRun: OrganizeRun
 
     init(organizer: NoteOrganizing = FoundationModelOrganizer(), log: DiagnosticsLog = .shared) {
-        self.organizer = organizer
         self.log = log
+        self.organizeRun = OrganizeRun(organizer: organizer, source: .shareExtension, log: log)
     }
 
     // MARK: - Flow
@@ -48,14 +46,6 @@ final class ShareViewModel {
         guard !trimmed.isEmpty else {
             log.recordEvent(source: .shareExtension, message: "No text in the shared payload")
             state = .nothingToOrganize
-            return
-        }
-
-        // Asked before organizing so an ineligible iPhone says so straight
-        // away instead of after a wait that was never going to work.
-        if let failure = ModelAvailability.currentFailure() {
-            log.recordEvent(source: .shareExtension, message: "Model unavailable: \(failure)")
-            state = .unavailable(failure)
             return
         }
 
@@ -76,34 +66,25 @@ final class ShareViewModel {
         log.recordEvent(source: .shareExtension, message: "Copied the original text")
     }
 
-    func recordSaveAction(_ action: SaveActionsBar.Action) {
-        log.recordEvent(source: .shareExtension, message: "Save action: \(action.rawValue)")
-    }
-
     // MARK: - Organizing
 
     /// Runs in this process on purpose: FoundationModels does its work in a
     /// system process, so the extension's memory limit isn't the constraint
     /// it would be for a model loaded in-process.
+    ///
+    /// No model-availability pre-check: the organizer makes the same check
+    /// first thing and throws the same failure, so asking here would only
+    /// log the one condition twice.
     private func organize(_ text: String) async {
-        let words = WordCounter.count(text)
-        state = .organizing(wordCount: words)
+        state = .organizing(wordCount: WordCounter.count(text))
 
-        let started = clock.now
-        do {
-            let note = try await organizer.organize(text)
-            log.recordOrganizeTiming(
-                source: .shareExtension,
-                wordCount: words,
-                duration: (clock.now - started).totalSeconds
-            )
-            state = .preview(note)
-        } catch let failure as OrganizeFailure {
-            log.recordEvent(source: .shareExtension, message: "Organize failed: \(failure)")
+        switch await organizeRun.run(text) {
+        case .success(let outcome):
+            state = .preview(outcome.note)
+        case .failure(let failure):
             state = .unavailable(failure)
-        } catch {
-            log.recordEvent(source: .shareExtension, message: "Organize error: \(error.localizedDescription)")
-            state = .failed(message: error.localizedDescription)
+        case nil:
+            break
         }
     }
 }

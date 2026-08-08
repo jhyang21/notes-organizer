@@ -64,7 +64,7 @@ struct ShareRootView: View {
             previewView(note: note)
 
         case .nothingToOrganize:
-            messageView(
+            NoticeView(
                 symbol: "doc.text",
                 title: "There's no text here",
                 message: "Select the text you want organized, then share it again."
@@ -75,20 +75,6 @@ struct ShareRootView: View {
                 UnavailableView(failure: failure) {
                     Task { await model.retry() }
                 }
-                copyOriginalButton
-            }
-
-        case .failed(let message):
-            VStack(spacing: 16) {
-                messageView(
-                    symbol: "exclamationmark.triangle",
-                    title: "Couldn't organize that",
-                    message: message
-                )
-                Button("Try again") {
-                    Task { await model.retry() }
-                }
-                .buttonStyle(.borderedProminent)
                 copyOriginalButton
             }
         }
@@ -104,29 +90,12 @@ struct ShareRootView: View {
         }
     }
 
-    private func messageView(symbol: String, title: String, message: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: symbol)
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
-            Text(title)
-                .font(.headline)
-                .multilineTextAlignment(.center)
-            Text(message)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        }
-    }
-
     private func previewView(note: OrganizedNote) -> some View {
         VStack(spacing: 16) {
             OrganizedNotePreviewView(note: note)
                 .frame(maxHeight: .infinity)
 
-            SaveActionsBar(note: note) { action in
-                model.recordSaveAction(action)
-            }
+            SaveActionsBar(note: note, source: .shareExtension)
         }
     }
 
