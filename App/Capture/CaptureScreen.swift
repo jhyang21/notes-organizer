@@ -203,7 +203,7 @@ private extension CaptureFailure {
         case .microphonePermissionDenied:
             "Notes Organizer needs microphone access to transcribe your voice. Enable it in Settings."
         case .assetsUnsupported:
-            "This device doesn't support on-device speech transcription in this language."
+            "This device doesn't support on-device transcription in this language."
         case .assetDownloadFailed(let reason):
             reason
         case .captureFailed(let reason):
