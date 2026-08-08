@@ -23,12 +23,13 @@ public struct CloudConfig: Sendable {
         anonKey: "sb_publishable_GNjOCWCE_BcrdGKHPvl_sw_QVeRssb7"
     )
 
-    /// The kill switch. Every client milestone before M11 merges dark and
-    /// auto-ships to TestFlight, so the builds in between must not be able to
-    /// call a half-built endpoint. M11 flips this to `true` as its last step;
-    /// until then the view models route everything on-device.
+    /// The kill switch. Every client milestone before M11 merged dark and
+    /// auto-shipped to TestFlight, so the builds in between couldn't call a
+    /// half-built endpoint. Now that the endpoint is live and the view models
+    /// route to it, this is on — and it stays as the one line to change if the
+    /// cloud ever needs taking out of the app's hands.
     ///
-    /// Read at the call site rather than inside `RoutingPolicy`, which stays a
-    /// pure statement of the plan's routing table.
-    public static let cloudEnabled = false
+    /// Read by `OrganizeRouting` rather than inside `RoutingPolicy`, which
+    /// stays a pure statement of the plan's routing table.
+    public static let cloudEnabled = true
 }
