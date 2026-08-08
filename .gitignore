@@ -17,3 +17,6 @@ Gemfile.lock
 
 # macOS
 .DS_Store
+
+# Supabase CLI machine-local state (linked project ref, caches)
+supabase/.temp/

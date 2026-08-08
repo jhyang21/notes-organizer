@@ -1,0 +1,17 @@
+# TidyNote's slice of the Supabase project it shares with Relora.
+#
+# This file exists so `supabase functions deploy tidynote_organize` knows the
+# function's JWT setting. It deliberately declares nothing else: Relora's repo
+# owns the project's auth config, database migrations and other four functions,
+# and a second config.toml describing any of that would be a second source of
+# truth waiting to overwrite the first.
+#
+# project_id names the local dev stack only. The real target is always passed
+# explicitly as --project-ref.
+project_id = "tidynote"
+
+# The app authenticates with the publishable anon key, which satisfies the
+# gateway. Real authorization is the appUserId + quota + entitlement check
+# inside the function -- there are no accounts to verify.
+[functions.tidynote_organize]
+verify_jwt = true
