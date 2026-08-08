@@ -10,6 +10,8 @@
     <string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
+    <key>CFBundleDisplayName</key>
+    <string>Notes Organizer</string>
     <key>CFBundleName</key>
     <string>$(PRODUCT_NAME)</string>
     <key>CFBundlePackageType</key>
@@ -28,6 +30,10 @@
     <array>
         <string>UIInterfaceOrientationPortrait</string>
     </array>
+    <!-- Portrait-only apps must opt out of iPad multitasking or App Store
+         validation (90474) demands all four orientations. -->
+    <key>UIRequiresFullScreen</key>
+    <true/>
     <key>NSMicrophoneUsageDescription</key>
     <string>Notes Organizer records your voice so it can transcribe and organize what you say into a note. Audio is processed on-device and is never uploaded.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
