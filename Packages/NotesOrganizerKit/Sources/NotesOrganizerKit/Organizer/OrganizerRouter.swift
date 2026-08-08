@@ -113,7 +113,7 @@ public struct OrganizerRouter: NoteOrganizing {
             // The view models ask before they run, so this arm is a backstop
             // for a caller that didn't. Refusing beats sending the text.
             log.recordEvent(source: source, message: "Organize skipped: cloud consent not granted")
-            throw OrganizeFailure.cloudUnavailable(reason: "Premium tidies are off until you agree to send text to our servers.")
+            throw OrganizeFailure.cloudConsentNeeded
         }
     }
 
