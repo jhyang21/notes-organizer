@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import NotesOrganizerKit
 
@@ -29,6 +30,28 @@ struct OrganizedNoteTests {
         let c = OrganizedNote(title: "A", sections: [NoteSection(heading: "H", bullets: ["C"])])
         #expect(a == b)
         #expect(a != c)
+    }
+
+    // MARK: - The wire format
+
+    @Test("survives a JSON round trip")
+    func codableRoundTrip() throws {
+        let note = OrganizedNote(
+            title: "Kitchen quotes",
+            sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4200", "Miele quoted 5100"])],
+            actionItems: ["Call Priya"]
+        )
+
+        let decoded = try JSONDecoder().decode(OrganizedNote.self, from: try JSONEncoder().encode(note))
+        #expect(decoded == note)
+    }
+
+    @Test("a response with no action items is a note, not a failure")
+    func decodesMissingKeys() throws {
+        let json = Data(#"{"title":"T","sections":[{"heading":"H"}]}"#.utf8)
+
+        let decoded = try JSONDecoder().decode(OrganizedNote.self, from: json)
+        #expect(decoded == OrganizedNote(title: "T", sections: [NoteSection(heading: "H")]))
     }
 }
 

@@ -9,20 +9,17 @@ import FoundationModels
 ///
 /// Nothing here runs in CI. The unit suite exercises the pure pieces this
 /// type composes — `TranscriptChunker`, `NoteMerger`, `OutputSanitizer`,
-/// `OverSummarizationPolicy`, `DeterministicFormatter` — and `MockOrganizer`
-/// stands in for the whole type wherever a `NoteOrganizing` is needed.
+/// `OverSummarizationPolicy` — and `MockOrganizer` stands in for the whole
+/// type wherever a `NoteOrganizing` is needed.
 ///
 /// The one rule that shapes every branch below: **the user never loses
-/// content.** When the model summarizes instead of organizing, refuses the
-/// text, or returns something undecodable, this falls back to
-/// `DeterministicFormatter` rather than failing. `organize(_:)` only throws
-/// when there is genuinely nothing to show — no model on the device, no
-/// transcript, or text too long to process even after re-chunking.
+/// content.** There is no mechanical formatting floor. When the model
+/// refuses the text, returns something undecodable, or still summarizes
+/// after the one retry, this throws `.onDeviceFailed` and leaves the
+/// transcript whole in the caller's hands — a note that dropped half the
+/// words would be worse than no note. The recovery the user is offered is a
+/// premium tidy, not a lesser one.
 public struct FoundationModelOrganizer: NoteOrganizing {
-    /// Below this many letters and digits there is nothing worth organizing;
-    /// the model would invent structure around a stray word.
-    static let minimumMeaningfulCharacters = 10
-
     /// Two estimators, because the chunker's inner loop is synchronous and
     /// the model's own tokenizer is not: `tokenEstimator` drives chunking,
     /// `asyncEstimator` answers the one question worth a precise answer —
@@ -45,7 +42,7 @@ public struct FoundationModelOrganizer: NoteOrganizing {
 
     public func organize(_ text: String) async throws -> OrganizedNote {
         let transcript = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard meaningfulCharacterCount(transcript) >= Self.minimumMeaningfulCharacters else {
+        guard MeaningfulText.isWorthOrganizing(transcript) else {
             throw OrganizeFailure.emptyTranscript
         }
 
@@ -64,23 +61,14 @@ public struct FoundationModelOrganizer: NoteOrganizing {
             return try await organize(transcript, budget: .reduced)
         }
         #else
-        return OutputSanitizer.sanitize(DeterministicFormatter.format(transcript))
+        // Unreachable in practice — `ModelAvailability` reports
+        // `.deviceNotEligible` above on a build with no FoundationModels.
+        throw OrganizeFailure.deviceNotEligible
         #endif
-    }
-
-    private func meaningfulCharacterCount(_ text: String) -> Int {
-        text.unicodeScalars.lazy.filter { CharacterSet.alphanumerics.contains($0) }.count
     }
 }
 
 #if canImport(FoundationModels)
-
-/// The model produced nothing this app can use for this text — a refusal, an
-/// undecodable response, an unrecognized generation error. Private to this
-/// file because it is a routing signal, not a failure the user ever sees:
-/// `organizeSingleCall` catches it and falls back to the deterministic
-/// formatter, which hands the user back every word they gave.
-private struct NoUsableNote: Error {}
 
 extension FoundationModelOrganizer {
     // MARK: - Routing
@@ -95,29 +83,21 @@ extension FoundationModelOrganizer {
     // MARK: - Single call
 
     /// One fresh session, one response, then the over-summarization guard:
-    /// accept, re-ask once with the retry instructions, or fall back.
+    /// accept, re-ask once with the retry instructions, or give up.
     private func organizeSingleCall(_ transcript: String) async throws -> OrganizedNote {
         var attempt = 0
         var instructions = OrganizerPrompt.instructions
 
         while true {
-            let generated: OrganizedNote
-            do {
-                generated = try await generateNote(from: transcript, instructions: instructions)
-            } catch is NoUsableNote {
-                // Falling back keeps every word; failing would throw them away.
-                return fallback(for: transcript)
-            }
-
-            let note = OutputSanitizer.sanitize(generated)
+            let note = OutputSanitizer.sanitize(try await generateNote(from: transcript, instructions: instructions))
             switch OverSummarizationPolicy.decide(input: transcript, output: note, attempt: attempt) {
             case .accept:
                 return note
             case .retry:
                 attempt += 1
                 instructions = OrganizerPrompt.instructions + "\n\n" + OrganizerPrompt.retrySuffix
-            case .fallback:
-                return fallback(for: transcript)
+            case .reject:
+                throw OrganizeFailure.onDeviceFailed
             }
         }
     }
@@ -177,8 +157,8 @@ extension FoundationModelOrganizer {
 
     // MARK: - Model call + error mapping
 
-    /// Maps every `FoundationModels` error onto either the app's own failure
-    /// vocabulary or `NoUsableNote`.
+    /// Maps every `FoundationModels` error onto the app's own failure
+    /// vocabulary.
     private func generateNote(from transcript: String, instructions: String) async throws -> OrganizedNote {
         do {
             let session = LanguageModelSession(instructions: instructions)
@@ -192,33 +172,29 @@ extension FoundationModelOrganizer {
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            // An unrecognized generation failure still leaves the transcript
-            // intact, so treat it as "no usable note" and let the caller
-            // fall back rather than surfacing a system error string.
-            throw NoUsableNote()
+            // An unrecognized generation failure says nothing a user could act
+            // on, so it reads as the one thing that is true: this iPhone
+            // couldn't tidy this text.
+            throw OrganizeFailure.onDeviceFailed
         }
     }
 
-    private func mapped(_ error: LanguageModelSession.GenerationError, transcript: String) -> Error {
+    private func mapped(_ error: LanguageModelSession.GenerationError, transcript: String) -> OrganizeFailure {
         switch error {
         case .exceededContextWindowSize:
-            return OrganizeFailure.contextOverflow(estimatedTokenCount: tokenEstimator.tokenCount(transcript))
+            return .contextOverflow(estimatedTokenCount: tokenEstimator.tokenCount(transcript))
         case .assetsUnavailable:
-            return OrganizeFailure.modelNotReady(reason: "The on-device model isn't downloaded yet. Try again once it finishes.")
+            return .modelNotReady(reason: "The on-device model isn't downloaded yet. Try again once it finishes.")
         case .rateLimited:
-            return OrganizeFailure.modelNotReady(reason: "The on-device model is busy. Try again in a moment.")
+            return .modelNotReady(reason: "The on-device model is busy. Try again in a moment.")
         default:
             // Guardrail violations, decoding failures, unsupported guides and
             // languages all mean the same thing to this app: no note from the
-            // model for this text. Deliberately *not* a distinct user-facing
-            // failure — the deterministic fallback gives the user their
-            // content back, which beats an error screen explaining a refusal.
-            return NoUsableNote()
+            // model for this text. The user keeps their transcript and is
+            // offered a premium tidy, which is the only thing left that might
+            // work on it.
+            return .onDeviceFailed
         }
-    }
-
-    private func fallback(for transcript: String) -> OrganizedNote {
-        OutputSanitizer.sanitize(DeterministicFormatter.format(transcript))
     }
 }
 
