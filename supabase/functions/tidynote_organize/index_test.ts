@@ -85,6 +85,48 @@ function makeRequest(body: unknown, headers: Record<string, string> = {}): Reque
   });
 }
 
+const TRANSCRIPT = 'Call the dentist tomorrow at nine and pick up milk.';
+
+/** Whisper is asked for response_format=text, so its body is the transcript
+ * itself rather than a JSON envelope. */
+function whisperSuccess(transcript: string = TRANSCRIPT): Response {
+  return new Response(transcript, { status: 200, headers: { 'Content-Type': 'text/plain' } });
+}
+
+function audioFile(bytes = 2048): File {
+  return new File([new Uint8Array(bytes)], 'note.m4a', { type: 'audio/mp4' });
+}
+
+/** A multipart request shaped like the one the app sends. `audio: null` leaves
+ * the part out altogether. */
+function makeVoiceRequest(
+  fields: { audio?: File | null; appUserId?: string; durationSeconds?: string; locale?: string } = {},
+): Request {
+  const form = new FormData();
+  if (fields.audio !== null) form.append('audio', fields.audio ?? audioFile());
+  form.append('appUserId', fields.appUserId ?? VALID_USER);
+  form.append('clientVersion', '1.3.0');
+  form.append('durationSeconds', fields.durationSeconds ?? '12');
+  if (fields.locale) form.append('locale', fields.locale);
+  return new Request('https://example.test/functions/v1/tidynote_organize', { method: 'POST', body: form });
+}
+
+/** makeDeps with a fetch that answers both upstream calls a voice request
+ * makes: Whisper first, then the chat completion. */
+function makeVoiceDeps(options: StubOptions & { whisper?: () => Promise<Response> } = {}) {
+  const whisper = options.whisper ?? (() => Promise.resolve(whisperSuccess()));
+  const rest: NonNullable<StubOptions['fetchImpl']> = options.fetchImpl ?? (() => Promise.resolve(openAiSuccess()));
+  return makeDeps({
+    ...options,
+    fetchImpl: (url, init) => (url.includes('/audio/transcriptions') ? whisper() : rest(url, init)),
+  });
+}
+
+/** The form the handler sent to Whisper. */
+function whisperForm(call: FetchCall): FormData {
+  return call.init?.body as FormData;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -275,8 +317,8 @@ Deno.test('an active pro entitlement is never blocked by the quota', async () =>
   assertEquals(response.status, 200);
   const body = await response.json();
   assertEquals(body.plan, 'pro');
-  assertEquals(body.quota.limit, 1_000_000);
-  assertEquals(calls.quota[0].limit, 1_000_000);
+  assertEquals(body.quota.limit, 500);
+  assertEquals(calls.quota[0].limit, 500);
 });
 
 Deno.test('an expired pro entitlement is free', async () => {
@@ -434,4 +476,146 @@ Deno.test('a 400 naming temperature is retried once without it', async () => {
   const response = await handleRequest(makeRequest({ text: 'hello there', appUserId: VALID_USER }), deps);
   assertEquals(response.status, 200);
   assertEquals(attempts, 2);
+});
+
+// ---------------------------------------------------------------------------
+// Voice path
+// ---------------------------------------------------------------------------
+
+Deno.test('a multipart request with no audio part is an invalid request', async () => {
+  const { deps, calls } = makeVoiceDeps();
+  const response = await handleRequest(makeVoiceRequest({ audio: null }), deps);
+  assertEquals(response.status, 400);
+  assertEquals((await response.json()).error.code, 'invalid_request');
+  assertEquals(calls.quota.length, 0);
+  assertEquals(calls.fetch.length, 0);
+});
+
+Deno.test('audio over 12 MB is refused before a quota is spent on it', async () => {
+  const { deps, calls } = makeVoiceDeps();
+  const response = await handleRequest(makeVoiceRequest({ audio: audioFile(13 * 1024 * 1024) }), deps);
+  assertEquals(response.status, 413);
+  assertEquals((await response.json()).error.code, 'audio_too_large');
+  assertEquals(calls.quota.length, 0);
+  assertEquals(calls.fetch.length, 0);
+});
+
+Deno.test('a recording longer than the ceiling is refused before a quota is spent on it', async () => {
+  const { deps, calls } = makeVoiceDeps();
+  const response = await handleRequest(makeVoiceRequest({ durationSeconds: '400' }), deps);
+  assertEquals(response.status, 413);
+  assertEquals((await response.json()).error.code, 'audio_too_large');
+  assertEquals(calls.quota.length, 0);
+  assertEquals(calls.fetch.length, 0);
+});
+
+Deno.test('a voice tidy charges once, then organizes what Whisper heard', async () => {
+  _resetEntitlementCache();
+  const { deps, calls } = makeVoiceDeps({ quota: () => Promise.resolve({ allowed: true, used: 1 }) });
+  const response = await handleRequest(makeVoiceRequest(), deps);
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.note, SAMPLE_NOTE);
+  assertEquals(body.quota, { used: 1, limit: 5, remaining: 4, month: '2026-08' });
+  assertEquals(body.plan, 'free');
+  assertEquals(body.transcript, TRANSCRIPT);
+
+  // One transcription, one organize, and exactly one charge for the pair.
+  assertEquals(calls.quota.length, 1);
+  assertEquals(calls.fetch.length, 2);
+  assertEquals(calls.fetch[0].url, 'https://api.openai.com/v1/audio/transcriptions');
+  assertEquals(calls.fetch[1].url, 'https://api.openai.com/v1/chat/completions');
+  const sent = JSON.parse(String(calls.fetch[1].init?.body));
+  assertEquals(sent.messages[1].content, `<transcript>${TRANSCRIPT}</transcript>`);
+});
+
+Deno.test('the Whisper request carries the file, the model, plain text and the style prompt', async () => {
+  const { deps, calls } = makeVoiceDeps();
+  await handleRequest(makeVoiceRequest(), deps);
+
+  const form = whisperForm(calls.fetch[0]);
+  // The part is forwarded as it arrived, not re-encoded.
+  const file = form.get('file') as File | null;
+  assertEquals(file?.name, 'note.m4a');
+  assertEquals(file?.size, 2048);
+  assertEquals(form.get('model'), 'whisper-1');
+  assertEquals(form.get('response_format'), 'text');
+  assertStringIncludes(String(form.get('prompt')), 'normal punctuation and sentence casing');
+  // No locale was sent, so Whisper is left to detect the language itself.
+  assertEquals(form.get('language'), null);
+});
+
+Deno.test('the Whisper model is swappable without a deploy', async () => {
+  const { deps, calls } = makeVoiceDeps({ env: { OPENAI_API_KEY: 'sk-test', TIDYNOTE_WHISPER_MODEL: 'whisper-next' } });
+  await handleRequest(makeVoiceRequest(), deps);
+  assertEquals(whisperForm(calls.fetch[0]).get('model'), 'whisper-next');
+});
+
+Deno.test('a locale is narrowed to the language subtag Whisper understands', async () => {
+  const { deps, calls } = makeVoiceDeps();
+  await handleRequest(makeVoiceRequest({ locale: 'en-US' }), deps);
+  assertEquals(whisperForm(calls.fetch[0]).get('language'), 'en');
+});
+
+Deno.test('a failed transcription is 502, and the quota it already spent stays spent', async () => {
+  const { deps, calls } = makeVoiceDeps({ whisper: () => Promise.resolve(new Response('boom', { status: 500 })) });
+  const response = await handleRequest(makeVoiceRequest(), deps);
+
+  assertEquals(response.status, 502);
+  assertEquals((await response.json()).error.code, 'upstream_error');
+  // The charge lands before Whisper on purpose, so a failure burns a tidy. That
+  // is the accepted cost of not handing free transcription to an exhausted user.
+  assertEquals(calls.quota.length, 1);
+});
+
+Deno.test('a transcript of nothing but whitespace is 422 empty_transcript', async () => {
+  const { deps, calls } = makeVoiceDeps({ whisper: () => Promise.resolve(whisperSuccess('   \n\t  ')) });
+  const response = await handleRequest(makeVoiceRequest(), deps);
+
+  assertEquals(response.status, 422);
+  assertEquals((await response.json()).error.code, 'empty_transcript');
+  // Nothing was worth organizing, so the organizer was never called.
+  assertEquals(calls.fetch.length, 1);
+});
+
+Deno.test('the voice path hits the same quota wall as the text path', async () => {
+  _resetEntitlementCache();
+  const { deps, calls } = makeVoiceDeps({ quota: () => Promise.resolve({ allowed: false, used: 5 }) });
+  const response = await handleRequest(makeVoiceRequest(), deps);
+
+  assertEquals(response.status, 429);
+  const body = await response.json();
+  assertEquals(body.error.code, 'quota_exhausted');
+  assertEquals(body.quota, { used: 5, limit: 5, remaining: 0, month: '2026-08' });
+  // The sixth call of the month reaches neither Whisper nor the organizer.
+  assertEquals(calls.fetch.length, 0);
+});
+
+Deno.test('a pro entitlement resolves on the voice path too', async () => {
+  _resetEntitlementCache();
+  const { deps, calls } = makeVoiceDeps({
+    env: { OPENAI_API_KEY: 'sk-test', TIDYNOTE_RC_API_KEY: 'rc-test' },
+    fetchImpl: (url) =>
+      Promise.resolve(
+        url.includes('revenuecat')
+          ? new Response(JSON.stringify({ subscriber: { entitlements: { pro: { expires_date: null } } } }), { status: 200 })
+          : openAiSuccess(),
+      ),
+  });
+
+  const response = await handleRequest(makeVoiceRequest(), deps);
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.plan, 'pro');
+  assertEquals(body.quota.limit, 500);
+  assertEquals(calls.quota[0].limit, 500);
+});
+
+Deno.test('the text path gained no transcript field', async () => {
+  _resetEntitlementCache();
+  const { deps } = makeDeps();
+  const response = await handleRequest(makeRequest({ text: 'call the dentist', appUserId: VALID_USER }), deps);
+  const body = await response.json();
+  assertEquals(Object.keys(body).sort(), ['note', 'plan', 'quota']);
 });
