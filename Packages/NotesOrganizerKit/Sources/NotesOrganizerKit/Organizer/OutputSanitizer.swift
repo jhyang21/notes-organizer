@@ -1,8 +1,8 @@
 import Foundation
 
-/// Cleans up a model (or merged) `OrganizedNote` and flags output that
-/// looks summarized rather than organized. Pure and deterministic — no
-/// model calls.
+/// Cleans up an `OrganizedNote` on its way back from the model: collapsed
+/// whitespace, no blank bullets, no repeated lines, no runaway headings. Pure
+/// and deterministic — no model calls.
 enum OutputSanitizer {
     static let maxHeadingLength = 60
 
@@ -40,23 +40,5 @@ enum OutputSanitizer {
 
         guard !bullets.isEmpty else { return nil }
         return NoteSection(heading: heading, bullets: bullets)
-    }
-
-    /// The plan's over-summarization guard: reorganizing a transcript
-    /// should not shrink its word count by more than 60%. A word is a
-    /// whitespace-separated token; the input side counts words in the raw
-    /// transcript text, and the output side counts words across the note's
-    /// title, section headings, bullets, and action items combined. This is
-    /// a coarse heuristic, not a semantic check — it exists to catch a
-    /// model that summarized instead of organized, not to validate content.
-    static func isOverSummarized(input: String, output: OrganizedNote) -> Bool {
-        let inputWordCount = WordCounter.count(input)
-        guard inputWordCount > 0 else { return false }
-
-        let outputText = ([output.title] + output.sections.flatMap { [$0.heading] + $0.bullets } + output.actionItems)
-            .joined(separator: " ")
-        let outputWordCount = WordCounter.count(outputText)
-
-        return Double(outputWordCount) < Double(inputWordCount) * 0.6
     }
 }

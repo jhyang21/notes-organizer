@@ -35,11 +35,8 @@ struct CaptureScreen: View {
                     UnavailableView(
                         failure: failure,
                         onRetry: { viewModel.retry() },
-                        onPremiumTidy: { viewModel.requestPremiumTidy() },
                         onUpgrade: { isShowingPaywall = true }
                     )
-                case .premiumTidyFailed(_, let failure):
-                    premiumTidyFailureView(failure: failure)
                 }
             }
             .padding()
@@ -62,17 +59,13 @@ struct CaptureScreen: View {
         .sheet(isPresented: $isShowingPaywall, onDismiss: { viewModel.refreshPlan() }) {
             PaywallScreen()
         }
-        .sheet(
-            isPresented: $viewModel.isShowingCloudConsent,
-            onDismiss: { viewModel.cloudConsentDismissed() }
-        ) {
-            CloudConsentSheet(
-                onContinue: { viewModel.acceptCloudConsent() },
-                onNotNow: { viewModel.declineCloudConsent() }
-            )
+        // Full screen rather than a sheet: there is nothing behind it to use
+        // yet, and nothing to swipe it away for.
+        .fullScreenCover(isPresented: $viewModel.isShowingFirstRun) {
+            FirstRunScreen(onContinue: { viewModel.acceptFirstRun() })
         }
         .task {
-            viewModel.checkModelAvailability()
+            viewModel.showFirstRunIfNeeded()
         }
     }
 
@@ -112,7 +105,7 @@ struct CaptureScreen: View {
         VStack(spacing: 16) {
             ProgressView(value: progress)
                 .frame(width: 200)
-            Text("Downloading on-device speech model…")
+            Text("Downloading the speech model…")
                 .font(.headline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -150,38 +143,8 @@ struct CaptureScreen: View {
 
             SaveActionsBar(note: note, source: .app)
 
-            // The pitch for Pro, made by the product rather than a banner:
-            // the user has a tidy in front of them and can see what a better
-            // one does to it.
-            if let offer = viewModel.premiumTidyOffer {
-                Button(offer.title) {
-                    viewModel.requestPremiumTidy()
-                }
-                .buttonStyle(.bordered)
-                .font(.subheadline)
-            }
-
             Button("New note") {
                 viewModel.reset()
-            }
-            .font(.subheadline)
-        }
-    }
-
-    /// A premium tidy that failed after a plain one worked. The note is still
-    /// here, so the way back to it is always on screen — `UnavailableView`
-    /// offers no retry at all on a spent quota.
-    private func premiumTidyFailureView(failure: OrganizeFailure) -> some View {
-        VStack(spacing: 16) {
-            UnavailableView(
-                failure: failure,
-                onRetry: { viewModel.requestPremiumTidy() },
-                onPremiumTidy: { viewModel.requestPremiumTidy() },
-                onUpgrade: { isShowingPaywall = true }
-            )
-
-            Button("Back to your note") {
-                viewModel.returnToPreview()
             }
             .font(.subheadline)
         }
@@ -217,7 +180,7 @@ private extension CaptureFailure {
         case .microphonePermissionDenied:
             "TidyNote needs microphone access to transcribe your voice. Enable it in Settings."
         case .assetsUnsupported:
-            "This device doesn't support on-device transcription in this language."
+            "This device can't transcribe speech in this language."
         case .assetDownloadFailed(let reason):
             reason
         case .captureFailed(let reason):
@@ -230,8 +193,7 @@ private extension CaptureFailure {
 
 #Preview("Preview state") {
     CaptureScreen(viewModel: CaptureViewModel(routing: OrganizeRouting(
-        cloudEnabled: false,
-        onDevice: MockOrganizer(result: OrganizedNote(
+        cloud: MockOrganizer(result: OrganizedNote(
             title: "Kitchen Renovation Notes",
             sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4,200 for cabinets"])],
             actionItems: ["Call the contractor back on Thursday"]

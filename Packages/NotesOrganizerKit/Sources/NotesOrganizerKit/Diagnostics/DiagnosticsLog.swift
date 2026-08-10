@@ -44,12 +44,9 @@ public struct SharePayloadObservation: Codable, Equatable, Sendable, Identifiabl
     }
 }
 
-/// How long one organize took, and on how much text.
-///
-/// There is no "which organizer ran" flag: an `OrganizedNote` looks the same
-/// whether the on-device model or the cloud produced it, and `OrganizeRun`
-/// can't tell them apart. Source, word count, and duration are what's
-/// honestly observable here; a router that falls back writes its own event.
+/// How long one organize took, and on how much text. Source, word count, and
+/// duration are all there is to record: one organizer runs every note, so
+/// there is nothing to tell apart.
 public struct OrganizeTiming: Codable, Equatable, Sendable, Identifiable {
     public var id: UUID
     public var timestamp: Date

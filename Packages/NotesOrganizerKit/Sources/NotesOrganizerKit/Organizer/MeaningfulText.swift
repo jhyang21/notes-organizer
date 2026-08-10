@@ -1,9 +1,9 @@
 import Foundation
 
-/// The near-empty guard both organizers apply before spending anything on a
-/// transcript. Shared rather than copied so "there was nothing to organize"
-/// means the same thing on-device and in the cloud — a user who gets
-/// `.emptyTranscript` from one would be confused to get a note from the other.
+/// The near-empty guard applied before a transcript costs anyone a round trip
+/// or a tidy. Kept apart from the organizer that calls it so "there was
+/// nothing to organize" is one rule, stated once, and testable without a
+/// network.
 enum MeaningfulText {
     /// Below this many letters and digits there is nothing worth organizing;
     /// a model would invent structure around a stray word.

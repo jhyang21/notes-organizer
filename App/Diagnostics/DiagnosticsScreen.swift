@@ -2,30 +2,15 @@ import NotesOrganizerKit
 import SwiftUI
 
 /// A workbench, not a feature. It answers the questions a Windows machine
-/// can't: is the model there, how slow is it on this iPhone, what does Apple
-/// Notes actually hand the share extension, and does Notes' Markdown import
-/// keep a note's structure. It ships in the beta on purpose — the answers
-/// only exist on Andrew's device.
+/// can't: how long a real tidy took on this iPhone, what Apple Notes actually
+/// hands the share extension, and whether Notes' Markdown import keeps a
+/// note's structure. It ships in the beta on purpose — the answers only exist
+/// on Andrew's device.
 struct DiagnosticsScreen: View {
     @State private var viewModel = DiagnosticsViewModel()
 
     var body: some View {
         List {
-            modelStatusSection
-            sampleRunSection(
-                title: "Model hello-world",
-                caption: "Organizes a short sample (~80 words).",
-                buttonTitle: "Run short sample",
-                sample: .short,
-                state: viewModel.helloWorld
-            )
-            sampleRunSection(
-                title: "Latency benchmark",
-                caption: "Organizes a longer sample (~400 words).",
-                buttonTitle: "Run long sample",
-                sample: .long,
-                state: viewModel.benchmark
-            )
             markdownImportSection
             sharePayloadSection
             timingsSection
@@ -47,86 +32,7 @@ struct DiagnosticsScreen: View {
         }
     }
 
-    // MARK: - 1. Model status
-
-    private var modelStatusSection: some View {
-        Section("Model status") {
-            switch viewModel.modelStatus {
-            case .checking:
-                Text("Checking…")
-                    .foregroundStyle(.secondary)
-            case .ready:
-                Label("Ready", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            case .unavailable(let failure):
-                VStack(alignment: .leading, spacing: 4) {
-                    Label("Not ready", systemImage: "xmark.circle.fill")
-                        .foregroundStyle(.orange)
-                    Text(String(describing: failure))
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
-    // MARK: - 2 & 3. Sample runs
-
-    private enum Sample {
-        case short
-        case long
-    }
-
-    private func sampleRunSection(
-        title: String,
-        caption: String,
-        buttonTitle: String,
-        sample: Sample,
-        state: DiagnosticsViewModel.RunState
-    ) -> some View {
-        Section(title) {
-            Text(caption)
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-
-            Button(buttonTitle) {
-                Task {
-                    switch sample {
-                    case .short: await viewModel.runShortSample()
-                    case .long: await viewModel.runLongSample()
-                    }
-                }
-            }
-            .disabled(state == .running)
-
-            switch state {
-            case .idle:
-                EmptyView()
-            case .running:
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("Organizing…")
-                        .foregroundStyle(.secondary)
-                }
-            case .succeeded(let result):
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(String(format: "%.2f s for %d words", result.seconds, result.wordCount))
-                        .font(.body.monospacedDigit())
-                    Text(result.title.isEmpty ? "Untitled" : result.title)
-                        .font(.footnote)
-                    Text("\(result.sectionCount) sections, \(result.actionItemCount) action items")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-            case .failed(let message):
-                Text(message)
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
-            }
-        }
-    }
-
-    // MARK: - 4. Markdown import check
+    // MARK: - 1. Markdown import check
 
     private var markdownImportSection: some View {
         Section("Markdown import check") {
@@ -150,7 +56,7 @@ struct DiagnosticsScreen: View {
         }
     }
 
-    // MARK: - 5. Share payloads
+    // MARK: - 2. Share payloads
 
     private var sharePayloadSection: some View {
         Section("Share payloads") {
@@ -179,7 +85,7 @@ struct DiagnosticsScreen: View {
         }
     }
 
-    // MARK: - 6. Organize timings
+    // MARK: - 3. Organize timings
 
     private var timingsSection: some View {
         Section("Organize timings") {
@@ -227,7 +133,7 @@ struct DiagnosticsScreen: View {
         }
     }
 
-    // MARK: - 7. Device
+    // MARK: - 4. Device
 
     private var deviceSection: some View {
         Section("Device") {

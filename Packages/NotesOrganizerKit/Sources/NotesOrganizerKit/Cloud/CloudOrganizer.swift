@@ -1,10 +1,9 @@
 import Foundation
 
-/// A premium tidy: the whole transcript in one call to the `tidynote_organize`
-/// endpoint, which does the model work and answers with the same
-/// `OrganizedNote` the on-device path produces. No chunking — the cloud
-/// context holds far more than a transcript, and chunking is what forces the
-/// merge-and-retitle dance on-device.
+/// A tidy: the whole transcript in one call to the `tidynote_organize`
+/// endpoint, which does the model work and answers with an `OrganizedNote`.
+/// No chunking — the context there holds far more than anyone talks in one
+/// sitting.
 ///
 /// The network is injected as a closure, so the tests below it never open a
 /// socket: they hand back canned bytes and assert on the request that would
@@ -166,12 +165,15 @@ public struct CloudOrganizer: NoteOrganizing {
             return try decodeNote(from: data)
         case 429:
             throw quotaOrRateLimitFailure(from: data)
+        case 413:
+            // A recording the endpoint won't take. The user can do something
+            // about that, so it gets its own screen rather than "try again".
+            throw OrganizeFailure.audioTooLarge
+        case 422:
+            // Nothing audible in the recording — the same dead end as text
+            // with nothing in it, and it reads the same way.
+            throw OrganizeFailure.emptyTranscript
         default:
-            // The voice path can also land here on a 413 (the recording is
-            // too big) or a 422 (nothing audible in it). Both deserve copy
-            // that says what to do about it; M15 gives them their own cases,
-            // and until then the user gets "something went wrong", which is
-            // at least true.
             throw OrganizeFailure.cloudUnavailable(reason: Copy.serverProblem)
         }
     }
@@ -186,8 +188,8 @@ public struct CloudOrganizer: NoteOrganizing {
             month: success.quota.month,
             isPro: success.plan == "pro"
         )
-        // Sanitized on the way in for the same reason the on-device path
-        // sanitizes: a renderer should never be handed a blank bullet.
+        // Sanitized on the way in: a renderer should never be handed a blank
+        // bullet, whatever the model did.
         return OutputSanitizer.sanitize(success.note)
     }
 

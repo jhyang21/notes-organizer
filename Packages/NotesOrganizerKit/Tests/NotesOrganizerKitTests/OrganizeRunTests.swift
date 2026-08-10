@@ -72,18 +72,21 @@ struct OrganizeRunTests {
         #expect(log.events().first?.source == .shareExtension)
     }
 
-    @Test("an error that isn't an OrganizeFailure becomes modelNotReady")
+    @Test("an error that isn't an OrganizeFailure becomes a fixed line, not the error's own")
     func normalizesUnknownErrors() async throws {
         let log = makeLog()
         let run = OrganizeRun(organizer: ThrowingOrganizer(thrown: .unknown), source: .app, log: log)
 
         let result = await run.run("some text")
-        guard case .failure(.modelNotReady) = try #require(result) else {
-            Issue.record("expected modelNotReady, got \(String(describing: result))")
+        guard case .failure(.cloudUnavailable(let reason)) = try #require(result) else {
+            Issue.record("expected cloudUnavailable, got \(String(describing: result))")
             return
         }
 
+        // Whatever the error said goes to the log, not to the user.
+        #expect(reason == "Something went wrong.")
         #expect(log.events().count == 1)
+        #expect(log.events().first?.message.contains("Organize failed") == true)
         #expect(log.organizeTimings().isEmpty)
     }
 

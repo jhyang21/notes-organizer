@@ -1,42 +1,36 @@
 import SwiftUI
-import UIKit
 
-/// What the user sees when there is no note to show: no Apple Intelligence
-/// on the device, a model that isn't ready, or nothing worth organizing.
-/// A `NoticeView` plus the copy and the way forward for each `OrganizeFailure`.
+/// What the user sees when there is no note to show: nothing worth
+/// organizing, a spent month, no connection, a recording too long to send, or
+/// a service having a bad minute. A `NoticeView` plus the copy and the way
+/// forward for each `OrganizeFailure`.
 ///
-/// Every case except `deviceNotEligible` offers a way forward, and the way
-/// forward is specific — "Open Settings" when Apple Intelligence is off,
-/// "Record again" when we heard nothing. A generic "Try again" on a device
-/// that can never run the model would just waste the user's time.
+/// Every case offers a way forward, and the way forward is specific — "Record
+/// again" when we heard nothing, "See TidyNote Pro" when the month is spent.
+/// A bare "Try again" where trying again can't work would only waste the
+/// user's time.
 ///
-/// Each action is a closure the caller may not have: a screen with no way to
-/// start a premium tidy passes `nil` and the button doesn't appear. No copy
-/// here names a model or a vendor — the user's vocabulary is "tidies" and
-/// "premium tidies".
+/// Each action is a closure the caller may not have: a screen with no paywall
+/// to open passes `nil` and the button doesn't appear. No copy here names a
+/// model or a vendor — the user's vocabulary is "tidies".
 public struct UnavailableView: View {
     private let failure: OrganizeFailure
     private let onRetry: (() -> Void)?
-    private let onPremiumTidy: (() -> Void)?
     private let onUpgrade: (() -> Void)?
     private let inShareExtension: Bool
 
-    @Environment(\.openURL) private var openURL
-
-    /// - Parameter inShareExtension: subscribing and agreeing to premium
-    ///   tidies both happen in the app and nowhere else. Set this where the
-    ///   app's screens can't be reached, and those two dead ends say where the
-    ///   switch lives instead of showing a button that couldn't work.
+    /// - Parameter inShareExtension: subscribing and getting started both
+    ///   happen in the app and nowhere else. Set this where the app's screens
+    ///   can't be reached, and those two dead ends say where the switch lives
+    ///   instead of showing a button that couldn't work.
     public init(
         failure: OrganizeFailure,
         onRetry: (() -> Void)? = nil,
-        onPremiumTidy: (() -> Void)? = nil,
         onUpgrade: (() -> Void)? = nil,
         inShareExtension: Bool = false
     ) {
         self.failure = failure
         self.onRetry = onRetry
-        self.onPremiumTidy = onPremiumTidy
         self.onUpgrade = onUpgrade
         self.inShareExtension = inShareExtension
     }
@@ -51,38 +45,11 @@ public struct UnavailableView: View {
     @ViewBuilder
     private var actions: some View {
         switch failure {
-        case .deviceNotEligible:
-            EmptyView()
-
-        case .appleIntelligenceNotEnabled:
-            Button("Open Settings") {
-                // Deep-linking straight to the Apple Intelligence pane isn't
-                // a documented URL; the app's own Settings page is, and it's
-                // one tap from there.
-                if let url = URL(string: UIApplication.openSettingsURLString) {
-                    openURL(url)
-                }
-            }
-            .buttonStyle(.borderedProminent)
-
-        case .modelNotReady, .contextOverflow, .networkUnavailable, .cloudUnavailable:
+        case .networkUnavailable, .cloudUnavailable:
             retryButton(title: "Try again")
 
-        case .emptyTranscript:
+        case .emptyTranscript, .audioTooLarge:
             retryButton(title: "Record again")
-
-        case .onDeviceFailed:
-            // A premium tidy is the only thing left that might organize this
-            // text, so it leads; the plain retry stays for a model that was
-            // merely having a bad minute.
-            if let onPremiumTidy {
-                Button("Try a premium tidy", action: onPremiumTidy)
-                    .buttonStyle(.borderedProminent)
-            }
-            if let onRetry {
-                Button("Try again", action: onRetry)
-                    .buttonStyle(.bordered)
-            }
 
         case .cloudQuotaExhausted:
             if inShareExtension {
@@ -94,11 +61,12 @@ public struct UnavailableView: View {
 
         case .cloudConsentNeeded:
             if inShareExtension {
-                openAppHint("Open TidyNote to allow premium tidies.")
+                openAppHint("Open TidyNote once to get started.")
             } else {
-                // The retry recomputes the route, which lands back on
-                // "consent needed" and puts the question on screen again.
-                retryButton(title: "Allow premium tidies")
+                // The app asks on first launch, so this shouldn't be reachable
+                // in it. Retrying recomputes the route, which puts the
+                // first-run screen up rather than leaving a dead end.
+                retryButton(title: "Try again")
             }
         }
     }
@@ -121,80 +89,64 @@ public struct UnavailableView: View {
 
     private var symbolName: String {
         switch failure {
-        case .deviceNotEligible: "iphone.slash"
-        case .appleIntelligenceNotEnabled: "gearshape"
-        case .modelNotReady: "clock.arrow.circlepath"
         case .emptyTranscript: "mic.slash"
-        case .contextOverflow: "doc.text.magnifyingglass"
-        case .onDeviceFailed: "exclamationmark.triangle"
         case .cloudQuotaExhausted: "sparkles"
         case .cloudConsentNeeded: "hand.raised"
         case .networkUnavailable: "wifi.slash"
+        case .audioTooLarge: "waveform"
         case .cloudUnavailable: "cloud.slash"
         }
     }
 
     private var title: String {
         switch failure {
-        case .deviceNotEligible: "This iPhone can't run TidyNote"
-        case .appleIntelligenceNotEnabled: "Turn on Apple Intelligence"
-        case .modelNotReady: "The model isn't ready yet"
         case .emptyTranscript: "We didn't catch anything"
-        case .contextOverflow: "That note is too long"
-        case .onDeviceFailed: "Couldn't tidy this on your iPhone"
-        case .cloudQuotaExhausted: "You've used this month's premium tidies"
-        case .cloudConsentNeeded: "Premium tidies need the cloud"
+        case .cloudQuotaExhausted: "You've used this month's tidies"
+        case .cloudConsentNeeded: "TidyNote isn't set up yet"
         case .networkUnavailable: "You're offline"
+        case .audioTooLarge: "That recording is too long"
         case .cloudUnavailable: "The tidy service hit a snag"
         }
     }
 
     private var message: String {
         switch failure {
-        case .deviceNotEligible:
-            "Organizing runs entirely on your iPhone, which needs Apple Intelligence — iPhone 15 Pro or later."
-        case .appleIntelligenceNotEnabled:
-            "TidyNote uses Apple Intelligence on your iPhone to organize notes. Turn it on in Settings, then come back."
-        case .modelNotReady(let reason):
-            reason
         case .emptyTranscript:
             "There wasn't enough there to organize. Record again and speak for a few seconds."
-        case .contextOverflow:
-            "This one is long enough that it won't fit in a single pass. Try splitting it into two notes."
-        case .onDeviceFailed:
-            "The on-device model couldn't organize this text without losing content. Nothing was lost."
         case .cloudQuotaExhausted:
             "They come back next month, or go unlimited with TidyNote Pro. Nothing was lost — your text is still here."
         case .cloudConsentNeeded:
-            "A premium tidy sends the note's text to our servers to be organized, and you haven't agreed to that yet. Tidies that run on your iPhone never leave it."
+            "TidyNote says what it sends and asks once, in the app, before anything leaves your iPhone."
         case .networkUnavailable:
-            "Premium tidies need an internet connection. Nothing was lost — try again when you're back online."
+            "TidyNote needs a connection to tidy a note. Nothing was lost — try again when you're back online."
+        case .audioTooLarge:
+            "That recording is longer than TidyNote can handle. Try recording it in two parts."
         case .cloudUnavailable(let reason):
             reason
         }
     }
 }
 
-#Preview("Not enabled") {
-    UnavailableView(failure: .appleIntelligenceNotEnabled)
-}
-
 #Preview("Empty transcript") {
     UnavailableView(failure: .emptyTranscript, onRetry: {})
-}
-
-#Preview("On-device failed") {
-    UnavailableView(failure: .onDeviceFailed, onRetry: {}, onPremiumTidy: {})
 }
 
 #Preview("Quota exhausted") {
     UnavailableView(failure: .cloudQuotaExhausted, onUpgrade: {})
 }
 
-#Preview("Consent needed") {
-    UnavailableView(failure: .cloudConsentNeeded, onRetry: {})
+#Preview("Offline") {
+    UnavailableView(failure: .networkUnavailable, onRetry: {})
+}
+
+#Preview("Recording too long") {
+    UnavailableView(failure: .audioTooLarge, onRetry: {})
 }
 
 #Preview("Quota exhausted, share extension") {
     UnavailableView(failure: .cloudQuotaExhausted, inShareExtension: true)
+}
+
+#Preview("Not set up, share extension") {
+    UnavailableView(failure: .cloudConsentNeeded, inShareExtension: true)
 }

@@ -11,7 +11,7 @@ import UIKit
 /// `MockOrganizer` on a machine with no model.
 ///
 /// The one thing this can't do that the app can is ask. There is no
-/// RevenueCat SDK here and no consent sheet: it reads what the app wrote to
+/// RevenueCat SDK here and no first-run screen: it reads what the app wrote to
 /// the App Group, and where that says "not yet" it points at the app.
 @MainActor
 @Observable
@@ -56,24 +56,15 @@ final class ShareViewModel {
         await organize(trimmed)
     }
 
+    /// "Try again" on a failure screen. The text is still here, so a retry
+    /// re-organizes it rather than sending the user back to Notes for it.
     func retry() async {
-        await rerun(preference: .automatic)
-    }
-
-    /// "Try a premium tidy" on the on-device-failure screen. If the app hasn't
-    /// been opened to agree to premium tidies, the route says so and the user
-    /// gets told where to go — nothing is sent on a guess.
-    func requestPremiumTidy() async {
-        await rerun(preference: .forceCloud)
-    }
-
-    private func rerun(preference: RoutingPolicy.Preference) async {
         let trimmed = originalText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             state = .nothingToOrganize
             return
         }
-        await organize(trimmed, preference: preference)
+        await organize(trimmed)
     }
 
     func copyOriginalText() {
@@ -83,27 +74,27 @@ final class ShareViewModel {
 
     // MARK: - Organizing
 
-    /// Runs in this process on purpose: FoundationModels does its work in a
-    /// system process, so the extension's memory limit isn't the constraint
-    /// it would be for a model loaded in-process.
-    ///
-    /// The availability check that used to be left to the organizer happens
-    /// here now, because the route needs it: whether this iPhone can tidy on
-    /// its own is half of what decides where the text goes.
-    private func organize(_ text: String, preference: RoutingPolicy.Preference = .automatic) async {
-        let route = routing.route(preference: preference, onDeviceFailure: ModelAvailability.currentFailure())
-
-        // Consent is a conversation, and this process can't have one.
-        if case .consentNeeded = route {
+    /// The route is decided here, before anything is sent, because two of its
+    /// outcomes are screens this process has to show instead: the quota wall,
+    /// and a user who hasn't been told what TidyNote sends.
+    private func organize(_ text: String) async {
+        switch routing.route() {
+        case .cloud:
+            break
+        case .consentNeeded:
+            // Consent is a conversation, and this process can't have one.
             log.recordEvent(source: .shareExtension, message: "Organize skipped: cloud consent not granted")
             state = .unavailable(.cloudConsentNeeded)
+            return
+        case .blocked(let failure):
+            log.recordEvent(source: .shareExtension, message: "Organize blocked: \(failure)")
+            state = .unavailable(failure)
             return
         }
 
         state = .organizing(wordCount: WordCounter.count(text))
 
-        let organizer = routing.organizer(for: route, source: .shareExtension, log: log)
-        switch await OrganizeRun(organizer: organizer, source: .shareExtension, log: log).run(text) {
+        switch await OrganizeRun(organizer: routing.organizer(), source: .shareExtension, log: log).run(text) {
         case .success(let outcome):
             state = .preview(outcome.note)
         case .failure(let failure):

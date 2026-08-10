@@ -1,7 +1,6 @@
 import Foundation
 
-/// What the app believes about the user's plan and this month's premium
-/// tidies. A belief, not a ledger: the server counts, and every field here
+/// What the app believes about the user's plan and this month's tidies. A belief, not a ledger: the server counts, and every field here
 /// was copied from something the server said. Nothing in this type ever
 /// increments a counter of its own, so the worst a stale or tampered value
 /// can cost is one round-trip that comes back 429.
@@ -105,7 +104,7 @@ public struct EntitlementStore: @unchecked Sendable {
         planState()?.isPro ?? false
     }
 
-    /// How many premium tidies are left, or `nil` when the honest answer is
+    /// How many tidies are left, or `nil` when the honest answer is
     /// "we don't know yet" — no stored state, a Pro subscription (unlimited),
     /// or counts from a month that has since rolled over. Callers treat `nil`
     /// optimistically: try the call and let the server say no.
@@ -127,9 +126,9 @@ public struct EntitlementStore: @unchecked Sendable {
 
     // MARK: - Consent
 
-    /// Whether the user has agreed to send note text for a premium tidy.
-    /// Absent means "not asked yet"; the app shows the sheet, the extension
-    /// treats it as no.
+    /// Whether the user has been told what TidyNote sends, and said go ahead.
+    /// Absent means "not asked yet"; the app shows the first-run screen, the
+    /// extension treats it as no.
     public var cloudConsentGranted: Bool {
         defaults?.bool(forKey: Key.cloudConsent) ?? false
     }

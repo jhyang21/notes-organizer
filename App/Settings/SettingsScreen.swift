@@ -3,9 +3,8 @@ import RevenueCat
 import SwiftUI
 
 /// Everything about the account that isn't capturing a note: which plan the
-/// user is on, how many premium tidies are left, the two buttons Apple
-/// requires next to a subscription, what leaves the iPhone, and the way in to
-/// Diagnostics.
+/// user is on, how many tidies are left, the two buttons Apple requires next
+/// to a subscription, what leaves the iPhone, and the way in to Diagnostics.
 ///
 /// The plan lines read from `EntitlementStore`, which is plain shared
 /// storage rather than anything observable, so the screen pulls a snapshot
@@ -63,7 +62,7 @@ struct SettingsScreen: View {
             if isPro {
                 Label("TidyNote Pro", systemImage: "sparkles")
                     .font(.headline)
-                Text("Premium tidies are unlimited.")
+                Text("Tidies are unlimited.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             } else {
@@ -71,11 +70,11 @@ struct SettingsScreen: View {
                     .font(.headline)
 
                 if let remaining {
-                    Text("Premium tidies left this month: \(remaining)")
+                    Text("Tidies left this month: \(remaining)")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("\(PlanState.freeMonthlyLimit) premium tidies a month on the free plan.")
+                    Text("\(PlanState.freeMonthlyLimit) tidies a month on the free plan.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -118,10 +117,9 @@ struct SettingsScreen: View {
     private var privacySection: some View {
         Section("Privacy") {
             Text("""
-            Tidies that run on your iPhone stay on your iPhone — nothing is \
-            sent anywhere. A premium tidy sends the note's text over an \
-            encrypted connection so a bigger model can organize it, and the \
-            text isn't kept once the note comes back.
+            Your recording and your note's text are sent over an encrypted \
+            connection so they can be transcribed and organized. We don't keep \
+            either one once the note comes back.
             """)
             .font(.footnote)
             .foregroundStyle(.secondary)

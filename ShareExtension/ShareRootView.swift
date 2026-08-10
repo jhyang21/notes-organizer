@@ -75,7 +75,6 @@ struct ShareRootView: View {
                 UnavailableView(
                     failure: failure,
                     onRetry: { Task { await model.retry() } },
-                    onPremiumTidy: { Task { await model.requestPremiumTidy() } },
                     // No paywall here — StoreKit's purchase UI doesn't work
                     // in a share extension, so `inShareExtension` turns the
                     // buttons only the app can honour into a line saying so.
@@ -122,8 +121,7 @@ struct ShareRootView: View {
     ShareRootView(
         items: [],
         model: ShareViewModel(routing: OrganizeRouting(
-            cloudEnabled: false,
-            onDevice: MockOrganizer(result: OrganizedNote(
+            cloud: MockOrganizer(result: OrganizedNote(
                 title: "Kitchen Renovation Notes",
                 sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4,200 for cabinets"])],
                 actionItems: ["Call the contractor back on Thursday"]

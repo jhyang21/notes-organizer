@@ -38,9 +38,9 @@
     <key>UIRequiresFullScreen</key>
     <true/>
     <key>NSMicrophoneUsageDescription</key>
-    <string>TidyNote records your voice so it can transcribe and organize what you say into a note. Speech becomes text on your iPhone; audio never leaves your device. If you use a premium tidy, the text (never the audio) is sent securely to TidyNote's servers.</string>
+    <string>TidyNote records your voice so it can turn what you say into an organized note. What you say is sent over an encrypted connection to TidyNote's servers to be organized, and isn't kept once the note comes back.</string>
     <key>NSSpeechRecognitionUsageDescription</key>
-    <string>TidyNote transcribes your voice on-device so it can turn what you say into an organized note.</string>
+    <string>TidyNote turns your voice into text so it can organize what you say into a note.</string>
     <key>ITSAppUsesNonExemptEncryption</key>
     <false/>
 </dict>

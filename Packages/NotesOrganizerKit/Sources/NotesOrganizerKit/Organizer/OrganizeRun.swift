@@ -51,12 +51,12 @@ public struct OrganizeRun: Sendable {
             return .failure(failure)
         } catch {
             // Nothing else the organizer throws is a failure this app has a
-            // screen for. `.modelNotReady` is the honest reading — it says
-            // what went wrong and offers a retry, which is the only useful
-            // thing to offer for an error we can't name.
-            let failure = OrganizeFailure.modelNotReady(reason: error.localizedDescription)
+            // screen for. The user gets a fixed line and a retry, which is the
+            // only useful thing to offer for an error we can't name; the
+            // error's own words go to the log, where they help, rather than
+            // onto a screen, where they would only alarm.
             log.recordEvent(source: source, message: "Organize failed: \(error.localizedDescription)")
-            return .failure(failure)
+            return .failure(.cloudUnavailable(reason: "Something went wrong."))
         }
     }
 }

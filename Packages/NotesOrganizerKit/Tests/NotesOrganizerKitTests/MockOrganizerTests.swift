@@ -40,9 +40,9 @@ struct MockOrganizerTests {
         let first = try await organizer.organize("call one")
         #expect(first.title == "Before")
 
-        await organizer.setOutcome(.failure(.contextOverflow(estimatedTokenCount: 2000)))
+        await organizer.setOutcome(.failure(.cloudUnavailable(reason: "The service is busy.")))
 
-        await #expect(throws: OrganizeFailure.contextOverflow(estimatedTokenCount: 2000)) {
+        await #expect(throws: OrganizeFailure.cloudUnavailable(reason: "The service is busy.")) {
             try await organizer.organize("call two")
         }
     }
