@@ -14,6 +14,10 @@ public struct CloudOrganizer: NoteOrganizing {
     /// wedged call doesn't sit on a user's screen forever.
     static let timeout: TimeInterval = 90
 
+    /// The voice path uploads a recording and waits for it to be transcribed
+    /// before the model even starts, so it gets more room than the text path.
+    static let audioTimeout: TimeInterval = 150
+
     /// TidyNote's function on a project it shares with another app, so the
     /// name carries the app, not just the verb.
     static let functionName = "tidynote_organize"
@@ -44,29 +48,31 @@ public struct CloudOrganizer: NoteOrganizing {
         }
 
         let (data, response) = try await send(transcript)
-        guard let http = response as? HTTPURLResponse else {
-            throw OrganizeFailure.cloudUnavailable(reason: Copy.unreadable)
+        return try note(from: data, response: response)
+    }
+
+    /// The same tidy from a recording instead of typed text: the server
+    /// transcribes it and organizes the transcript in one round trip, so the
+    /// device never runs speech recognition at all.
+    ///
+    /// The file is read into memory rather than streamed. A capture is about a
+    /// megabyte, and reading it keeps `Transport` a plain
+    /// request-in/bytes-out closure — which is what lets every test below run
+    /// without a socket.
+    public func organize(audioAt url: URL, durationSeconds: Double, locale: Locale) async throws -> OrganizedNote {
+        guard let audio = try? Data(contentsOf: url) else {
+            throw OrganizeFailure.cloudUnavailable(reason: Copy.unreadableRecording)
         }
 
-        switch http.statusCode {
-        case 200:
-            return try decodeNote(from: data)
-        case 429:
-            throw quotaOrRateLimitFailure(from: data)
-        default:
-            throw OrganizeFailure.cloudUnavailable(reason: Copy.serverProblem)
-        }
+        let (data, response) = try await sendAudio(audio, durationSeconds: durationSeconds, locale: locale)
+        return try note(from: data, response: response)
     }
 
     // MARK: - Request
 
     private func send(_ transcript: String) async throws -> (Data, URLResponse) {
-        var request = URLRequest(url: config.functionsURL.appending(path: Self.functionName))
-        request.httpMethod = "POST"
-        request.timeoutInterval = Self.timeout
+        var request = makeRequest(timeout: Self.timeout)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("Bearer \(config.anonKey)", forHTTPHeaderField: "Authorization")
-        request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
 
         let body = RequestBody(
             text: transcript,
@@ -78,6 +84,57 @@ public struct CloudOrganizer: NoteOrganizing {
         }
         request.httpBody = encoded
 
+        return try await perform(request)
+    }
+
+    private func sendAudio(_ audio: Data, durationSeconds: Double, locale: Locale) async throws -> (Data, URLResponse) {
+        var body = MultipartFormBody()
+        body.appendFile(name: "audio", filename: "capture.m4a", contentType: "audio/mp4", data: audio)
+        body.appendField(name: "appUserId", value: store.appUserID())
+        body.appendField(name: "clientVersion", value: clientVersion)
+        body.appendField(name: "durationSeconds", value: Self.wholeSeconds(durationSeconds))
+        // BCP-47 because that is what a transcription service reads. Left out
+        // entirely when there is nothing to say, so the server picks rather
+        // than being handed an empty string to interpret.
+        let languageTag = locale.identifier(.bcp47)
+        if !languageTag.isEmpty {
+            body.appendField(name: "locale", value: languageTag)
+        }
+
+        var request = makeRequest(timeout: Self.audioTimeout)
+        request.setValue(body.contentTypeHeader, forHTTPHeaderField: "Content-Type")
+        request.httpBody = body.encoded()
+
+        return try await perform(request)
+    }
+
+    /// Everything the two paths agree on: where the call goes, how it
+    /// authenticates, and how long it may take. Only the body and its
+    /// `Content-Type` differ.
+    private func makeRequest(timeout: TimeInterval) -> URLRequest {
+        var request = URLRequest(url: config.functionsURL.appending(path: Self.functionName))
+        request.httpMethod = "POST"
+        request.timeoutInterval = timeout
+        request.setValue("Bearer \(config.anonKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
+        return request
+    }
+
+    /// The duration is a hint for the server's own limits, not a measurement
+    /// anyone reports, so whole seconds are plenty — and a nonsense value
+    /// (a capture that never started, an infinity out of a broken asset)
+    /// becomes zero rather than something unprintable.
+    ///
+    /// Capped as well as floored, because `Int(_:)` traps on a `Double` too
+    /// large to hold and "finite" is not the same as "small". A day is longer
+    /// than any capture, and the server rejects on its own limit long before
+    /// that.
+    private static func wholeSeconds(_ seconds: Double) -> String {
+        guard seconds.isFinite, seconds > 0 else { return "0" }
+        return String(Int(min(seconds.rounded(), 86_400)))
+    }
+
+    private func perform(_ request: URLRequest) async throws -> (Data, URLResponse) {
         do {
             return try await transport(request)
         } catch is CancellationError {
@@ -95,6 +152,29 @@ public struct CloudOrganizer: NoteOrganizing {
     }
 
     // MARK: - Response
+
+    /// The one place a reply becomes either a note or a failure. Both paths
+    /// call the same function and get the same envelope back, so both read it
+    /// the same way.
+    private func note(from data: Data, response: URLResponse) throws -> OrganizedNote {
+        guard let http = response as? HTTPURLResponse else {
+            throw OrganizeFailure.cloudUnavailable(reason: Copy.unreadable)
+        }
+
+        switch http.statusCode {
+        case 200:
+            return try decodeNote(from: data)
+        case 429:
+            throw quotaOrRateLimitFailure(from: data)
+        default:
+            // The voice path can also land here on a 413 (the recording is
+            // too big) or a 422 (nothing audible in it). Both deserve copy
+            // that says what to do about it; M15 gives them their own cases,
+            // and until then the user gets "something went wrong", which is
+            // at least true.
+            throw OrganizeFailure.cloudUnavailable(reason: Copy.serverProblem)
+        }
+    }
 
     private func decodeNote(from data: Data) throws -> OrganizedNote {
         guard let success = try? JSONDecoder().decode(SuccessBody.self, from: data) else {
@@ -139,6 +219,9 @@ public struct CloudOrganizer: NoteOrganizing {
         let note: OrganizedNote
         let quota: Quota
         let plan: String
+        // A voice reply also carries `transcript`. `JSONDecoder` ignores keys
+        // it wasn't asked about, so leaving it out costs nothing — and there
+        // is nowhere in the app to put a transcript yet.
     }
 
     private struct ErrorBody: Decodable {
@@ -164,6 +247,7 @@ public struct CloudOrganizer: NoteOrganizing {
         static let busy = "The service is busy right now. Try again in a moment."
         static let serverProblem = "Something went wrong on our end. Try again in a moment."
         static let unreadable = "We couldn't read the tidied note that came back. Try again."
+        static let unreadableRecording = "We couldn't read that recording. Try recording it again."
     }
 
     // MARK: - Defaults
