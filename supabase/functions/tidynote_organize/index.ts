@@ -1,8 +1,10 @@
 // TidyNote's cloud organizer ("premium tidy").
 //
-// One endpoint: take a raw transcript, return an OrganizedNote. Everything else
-// here exists to keep a publishable anon key -- which ships inside the app and
-// is therefore extractable -- from turning into an unbounded OpenAI bill:
+// One endpoint, two doors onto the same work: a JSON body carrying a
+// transcript, or a multipart body carrying audio we transcribe first. Both end
+// in the same place -- text in, an OrganizedNote out. Everything else here
+// exists to keep a publishable anon key -- which ships inside the app and is
+// therefore extractable -- from turning into an unbounded OpenAI bill:
 // per-user and per-IP rate limits, a server-authoritative monthly quota, and a
 // RevenueCat entitlement check.
 //
@@ -10,7 +12,8 @@
 // project as Relora but shares no code with it, so a change to Relora's _shared
 // helpers can never alter TidyNote's behavior.
 //
-// The note text is never logged.
+// The note text is never logged. Neither is the audio: it lives only for the
+// length of the transcription call and is written nowhere.
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.56.0';
 import { SYSTEM_PROMPT } from './prompt.ts';
@@ -18,11 +21,19 @@ import { SYSTEM_PROMPT } from './prompt.ts';
 const MAX_TEXT_CHARS = 60_000;
 const APP_USER_ID_PATTERN = /^[A-Za-z0-9:_\-.]{8,80}$/;
 
+// Two ceilings on one upload, because either alone has a hole. Bytes stop a
+// padded or high-bitrate file; the client-reported duration stops a long
+// recording that happens to compress small. The client stops recording at 300
+// seconds, so the extra 30 is slack for a clip that measures slightly over --
+// not a second allowance.
+const MAX_AUDIO_BYTES = 12 * 1024 * 1024;
+const MAX_AUDIO_SECONDS = 330;
+
 const FREE_MONTHLY_LIMIT = 5;
-// Pro is unlimited in product terms. It still goes through the same counter so
-// fair-use abuse is visible in the table; the ceiling is only high enough that
-// no human reaches it.
-const PRO_MONTHLY_LIMIT = 1_000_000;
+// Pro is unlimited in product terms and stays marketed that way. The counter is
+// an anti-abuse backstop, not a product limit: 500 a month is about 16 a day,
+// which no person reaches by using the app but a script does in an afternoon.
+const PRO_MONTHLY_LIMIT = 500;
 
 const USER_REQUESTS_PER_MINUTE = 6;
 const IP_REQUESTS_PER_MINUTE = 20;
@@ -30,6 +41,11 @@ const IP_REQUESTS_PER_MINUTE = 20;
 const ENTITLEMENT_CACHE_TTL_MS = 5 * 60 * 1000;
 const OPENAI_TIMEOUT_MS = 60_000;
 const DEFAULT_MODEL = 'gpt-5-mini';
+const WHISPER_TIMEOUT_MS = 45_000;
+const DEFAULT_WHISPER_MODEL = 'whisper-1';
+// Whisper imitates the style of its prompt, so this asks for the punctuation
+// and casing it otherwise omits. It is a style sample, not an instruction.
+const WHISPER_PROMPT = 'A personal voice note. Use normal punctuation and sentence casing.';
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -113,6 +129,13 @@ export function clientIp(req: Request): string | null {
 
 function quotaState(used: number, limit: number, month: string): QuotaState {
   return { used, limit, remaining: Math.max(limit - used, 0), month };
+}
+
+/** A form part read as text. A missing part and a part that turned out to be a
+ * file both read as absent, which is what every caller here wants. */
+function formField(form: FormData, name: string): string {
+  const value = form.get(name);
+  return typeof value === 'string' ? value : '';
 }
 
 // ---------------------------------------------------------------------------
@@ -290,6 +313,39 @@ async function organize(deps: Deps, text: string, model: string, apiKey: string)
 }
 
 // ---------------------------------------------------------------------------
+// Whisper
+// ---------------------------------------------------------------------------
+
+/** Turns the uploaded audio into text. The file is forwarded straight from the
+ * parsed form to OpenAI and dropped -- it is never buffered to disk, stored, or
+ * written to a log. */
+async function transcribe(deps: Deps, audio: File, model: string, apiKey: string, locale: string): Promise<string> {
+  const form = new FormData();
+  form.append('file', audio);
+  form.append('model', model);
+  form.append('response_format', 'text');
+  // A hint, not a constraint: naming the language stops Whisper guessing wrong
+  // on a short or noisy clip. The region half of a BCP-47 tag means nothing to
+  // the API, so only the language subtag goes over.
+  if (locale) form.append('language', locale.slice(0, 2));
+  form.append('prompt', WHISPER_PROMPT);
+
+  const response = await deps.fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+    signal: AbortSignal.timeout(WHISPER_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`whisper status ${response.status}: ${detail.slice(0, 200)}`);
+  }
+  // response_format is text, so the body is the transcript itself.
+  return await response.text();
+}
+
+// ---------------------------------------------------------------------------
 // Handler
 // ---------------------------------------------------------------------------
 
@@ -311,6 +367,8 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   let status = 500;
   let code: string | undefined;
   let usage: OrganizeOutcome['usage'];
+  let mode: 'text' | 'voice' = 'text';
+  let audioBytes: number | undefined;
   const model = deps.env('TIDYNOTE_OPENAI_MODEL') || DEFAULT_MODEL;
 
   try {
@@ -325,18 +383,47 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     }
 
     // --- validate ---------------------------------------------------------
-    let payload: { text?: unknown; appUserId?: unknown; clientVersion?: unknown };
-    try {
-      payload = await req.json();
-    } catch {
-      status = 400;
-      code = 'invalid_request';
-      return errorResponse(code, 'Body must be JSON.', status);
-    }
+    // The content type is the whole routing decision. Clients that predate the
+    // voice path send JSON and must not be able to tell this function grew a
+    // second door.
+    mode = (req.headers.get('content-type') ?? '').toLowerCase().includes('multipart/form-data') ? 'voice' : 'text';
 
-    const rawText = typeof payload.text === 'string' ? payload.text : '';
-    const text = rawText.trim();
-    const appUserId = typeof payload.appUserId === 'string' ? payload.appUserId : '';
+    let appUserId: string;
+    let text = '';
+    let audio: File | null = null;
+    let locale = '';
+    let durationSeconds = 0;
+
+    if (mode === 'voice') {
+      let form: FormData;
+      try {
+        form = await req.formData();
+      } catch {
+        status = 400;
+        code = 'invalid_request';
+        return errorResponse(code, 'Body must be a well-formed multipart form.', status);
+      }
+      appUserId = formField(form, 'appUserId');
+      locale = formField(form, 'locale');
+      // Advisory: the client measures it, so it is a cheap way to reject a long
+      // recording before reading the bytes, not a figure to be trusted.
+      durationSeconds = Number(formField(form, 'durationSeconds'));
+      const part = form.get('audio');
+      audio = part instanceof File ? part : null;
+    } else {
+      let payload: { text?: unknown; appUserId?: unknown; clientVersion?: unknown };
+      try {
+        payload = await req.json();
+      } catch {
+        status = 400;
+        code = 'invalid_request';
+        return errorResponse(code, 'Body must be JSON.', status);
+      }
+
+      const rawText = typeof payload.text === 'string' ? payload.text : '';
+      text = rawText.trim();
+      appUserId = typeof payload.appUserId === 'string' ? payload.appUserId : '';
+    }
 
     if (!APP_USER_ID_PATTERN.test(appUserId)) {
       status = 400;
@@ -346,16 +433,35 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
 
     userTag = (await sha256Hex(appUserId)).slice(0, 12);
 
-    if (text.length === 0) {
-      status = 400;
-      code = 'invalid_request';
-      return errorResponse(code, 'text is empty.', status);
-    }
-    // Measured on the trimmed text, which is what actually reaches the model.
-    if (text.length > MAX_TEXT_CHARS) {
-      status = 413;
-      code = 'too_long';
-      return errorResponse(code, `text exceeds ${MAX_TEXT_CHARS} characters.`, status);
+    if (mode === 'voice') {
+      if (!audio) {
+        status = 400;
+        code = 'invalid_request';
+        return errorResponse(code, 'audio is missing.', status);
+      }
+      audioBytes = audio.size;
+      if (audio.size > MAX_AUDIO_BYTES) {
+        status = 413;
+        code = 'audio_too_large';
+        return errorResponse(code, `audio exceeds ${MAX_AUDIO_BYTES} bytes.`, status);
+      }
+      if (durationSeconds > MAX_AUDIO_SECONDS) {
+        status = 413;
+        code = 'audio_too_large';
+        return errorResponse(code, `audio exceeds ${MAX_AUDIO_SECONDS} seconds.`, status);
+      }
+    } else {
+      if (text.length === 0) {
+        status = 400;
+        code = 'invalid_request';
+        return errorResponse(code, 'text is empty.', status);
+      }
+      // Measured on the trimmed text, which is what actually reaches the model.
+      if (text.length > MAX_TEXT_CHARS) {
+        status = 413;
+        code = 'too_long';
+        return errorResponse(code, `text exceeds ${MAX_TEXT_CHARS} characters.`, status);
+      }
     }
 
     // --- rate limit -------------------------------------------------------
@@ -415,7 +521,7 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
       used = result.used;
     }
 
-    // --- organize ---------------------------------------------------------
+    // --- transcribe -------------------------------------------------------
     const openAiKey = deps.env('OPENAI_API_KEY');
     if (!openAiKey) {
       status = 502;
@@ -423,6 +529,38 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
       return errorResponse(code, 'Organizer is not configured.', status);
     }
 
+    // Voice only -- a JSON request already has its text. The quota was charged
+    // above, before this call, on purpose: charging after transcription would
+    // let a user whose quota is spent keep uploading audio and get Whisper runs
+    // free for the rest of the month.
+    if (audio) {
+      let transcript: string;
+      try {
+        transcript = await transcribe(deps, audio, deps.env('TIDYNOTE_WHISPER_MODEL') || DEFAULT_WHISPER_MODEL, openAiKey, locale);
+      } catch (error) {
+        console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'transcription_failed', message: String(error) }));
+        status = 502;
+        code = 'upstream_error';
+        return errorResponse(code, 'The tidy service could not transcribe this recording.', status);
+      }
+
+      text = transcript.trim();
+      // Silence, or a recording of nothing but background noise. The user gets
+      // a distinct code so the app can say "we heard nothing" rather than
+      // blaming the organizer.
+      if (text.length === 0) {
+        status = 422;
+        code = 'empty_transcript';
+        return errorResponse(code, 'No speech was found in the recording.', status);
+      }
+      if (text.length > MAX_TEXT_CHARS) {
+        status = 413;
+        code = 'too_long';
+        return errorResponse(code, `text exceeds ${MAX_TEXT_CHARS} characters.`, status);
+      }
+    }
+
+    // --- organize ---------------------------------------------------------
     let outcome: OrganizeOutcome;
     try {
       outcome = await organize(deps, text, model, openAiKey);
@@ -435,24 +573,33 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
 
     usage = outcome.usage;
     status = 200;
-    return jsonResponse({ note: outcome.note, quota: quotaState(used, limit, month), plan }, 200);
+    // The transcript is returned only to the caller who sent audio -- it is the
+    // one thing they have no other copy of. A JSON caller already holds its own
+    // text, so its response shape is unchanged.
+    return jsonResponse(
+      { note: outcome.note, quota: quotaState(used, limit, month), plan, ...(mode === 'voice' ? { transcript: text } : {}) },
+      200,
+    );
   } catch (error) {
     console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'unhandled', message: String(error) }));
     status = 500;
     code = 'internal_error';
     return errorResponse(code, 'Something went wrong.', status);
   } finally {
-    // One line per request. Note text never appears here, and the user id is
-    // reduced to a hash prefix -- enough to correlate a complaint, not enough to
-    // rebuild the id.
+    // One line per request. Note text never appears here, nor any part of the
+    // audio -- audio_bytes is a size, not content -- and the user id is reduced
+    // to a hash prefix: enough to correlate a complaint, not enough to rebuild
+    // the id.
     console.log(
       JSON.stringify({
         tag: 'tidynote_organize',
         ms: Date.now() - startedAt,
         status,
         plan,
+        mode,
         user: userTag,
         model,
+        ...(audioBytes !== undefined ? { audio_bytes: audioBytes } : {}),
         ...(code ? { code } : {}),
         ...(usage?.prompt_tokens !== undefined ? { prompt_tokens: usage.prompt_tokens } : {}),
         ...(usage?.completion_tokens !== undefined ? { completion_tokens: usage.completion_tokens } : {}),
