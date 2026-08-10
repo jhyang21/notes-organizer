@@ -1,39 +1,51 @@
-import AVFoundation
 import Foundation
 import NotesOrganizerKit
 import Observation
 
-/// Reasons a capture can't produce a note that are the app's own —
-/// permissions, speech-asset download, the audio pipeline. Everything from the
-/// organizer onwards is an `OrganizeFailure`, which the package's
-/// `UnavailableView` already has copy and an action for.
+/// Reasons a capture can't produce a note that are the app's own — the
+/// microphone, and the recording itself. Everything from the upload onwards is
+/// an `OrganizeFailure`, which the package's `UnavailableView` already has
+/// copy and an action for.
 enum CaptureFailure: Equatable {
     case microphonePermissionDenied
-    case assetsUnsupported
-    case assetDownloadFailed(String)
     case captureFailed(String)
     case emptyRecording
 }
 
 /// Drives the capture flow end to end: idle → requestingPermissions →
-/// downloadingAssets → recording → organizing → preview, or failed at any
-/// step. Owns `AudioCaptureService`, `TranscriptionService`, and
-/// `SpeechAssetManager`; `OrganizeRouting` supplies the organizer, so tests
+/// recording → uploading → organizing → preview, or failed at any step. Owns
+/// `AudioRecorderService`; `OrganizeRouting` supplies the organizer, so tests
 /// and previews swap in a `MockOrganizer` by handing over a routing built
 /// around one.
+///
+/// The recording is a file, and the file is kept until a note comes back.
+/// That is what makes "Try again" mean try again rather than say it all
+/// again: a tidy that failed offline, or on a server having a bad minute,
+/// re-uploads the same recording.
 @MainActor
 @Observable
 final class CaptureViewModel {
     enum State: Equatable {
         case idle
         case requestingPermissions
-        case downloadingAssets(progress: Double)
-        case recording(liveTranscript: String, level: Float, elapsed: Duration)
+        case recording(level: Float, elapsed: Duration)
+        case uploading
         case organizing
         case preview(OrganizedNote)
         case failed(CaptureFailure)
         case unavailable(OrganizeFailure)
     }
+
+    /// A recording shorter than this is someone's stray tap, not something
+    /// they said. Nothing is uploaded and nothing is kept.
+    private static let minimumDuration: TimeInterval = 1
+
+    /// How long "Sending your recording…" stays up. The client can't see the
+    /// server change gear from receiving the audio to thinking about it, so
+    /// the caption moves on a timer rather than pretending to know — long
+    /// enough that a real upload is usually done, short enough that the screen
+    /// never looks stuck.
+    private static let uploadCaption = Duration.seconds(3)
 
     private(set) var state: State = .idle
 
@@ -44,20 +56,19 @@ final class CaptureViewModel {
     private let routing: OrganizeRouting
     private let log: DiagnosticsLog
     private let locale: Locale
-    private let audioCapture: AudioCaptureService
-    private let transcription: TranscriptionService
-    private let assetManager: SpeechAssetManager
+    private let recorder: AudioRecorderService
     private let clock = ContinuousClock()
 
     private var silenceDetector = SilenceDetector()
     private var lifecycleTask: Task<Void, Never>?
     private var organizeTask: Task<Void, Never>?
-    private var recordingTasks: [Task<Void, Never>] = []
-    private var isFinishingRecording = false
+    private var levelTask: Task<Void, Never>?
 
-    /// Kept so every retry re-organizes what the user actually said instead of
-    /// throwing the recording away and asking them to say it again.
-    private var lastTranscript: String?
+    /// The recording waiting for a note. Kept so every retry sends what the
+    /// user actually said instead of throwing it away and asking them to say
+    /// it again; deleted the moment a note comes back, or the moment they walk
+    /// away from it.
+    private var recording: AudioRecorderService.Recording?
     /// Set once the user has read the first-run screen, so a device where the
     /// App Group write goes nowhere asks once rather than forever.
     private var hasGrantedConsentThisSession = false
@@ -70,11 +81,9 @@ final class CaptureViewModel {
         self.routing = routing
         self.log = log
         self.locale = locale
-        self.audioCapture = AudioCaptureService()
-        self.transcription = TranscriptionService(locale: locale)
-        self.assetManager = SpeechAssetManager()
+        self.recorder = AudioRecorderService()
 
-        audioCapture.onInterrupted = { [weak self] in
+        recorder.onInterrupted = { [weak self] in
             self?.finishRecording()
         }
     }
@@ -104,16 +113,16 @@ final class CaptureViewModel {
         finishRecording()
     }
 
-    /// "Try again" on a failure screen. Re-organizes the transcript we still
-    /// have rather than discarding a recording the user just made — the only
-    /// things there is no point re-running are a transcript with nothing in it
-    /// and a recording too long to send. Both need a new recording.
+    /// "Try again" on a failure screen. Sends the recording we still have
+    /// rather than discarding something the user just said — the only things
+    /// there is no point re-sending are a recording with nothing audible in it
+    /// and one too long for the service. Both need a new recording.
     func retry() {
         switch state {
         case .unavailable(.emptyTranscript), .unavailable(.audioTooLarge):
             reset()
         default:
-            guard lastTranscript != nil else {
+            guard recording != nil else {
                 reset()
                 return
             }
@@ -129,19 +138,20 @@ final class CaptureViewModel {
         startOrganize()
     }
 
-    /// Abandons an in-progress or completed capture and returns to idle.
+    /// Abandons an in-progress or completed capture and returns to idle. The
+    /// recording goes with it: the user has said they're done with it.
     func reset() {
         lifecycleTask?.cancel()
         lifecycleTask = nil
         organizeTask?.cancel()
         organizeTask = nil
-        recordingTasks.forEach { $0.cancel() }
-        recordingTasks = []
-        isFinishingRecording = false
-        transcription.cancel()
-        audioCapture.stop()
+        levelTask?.cancel()
+        levelTask = nil
+        if let interrupted = recorder.stop() {
+            delete(interrupted)
+        }
+        discardRecording()
         silenceDetector = SilenceDetector()
-        lastTranscript = nil
         state = .idle
     }
 
@@ -157,9 +167,9 @@ final class CaptureViewModel {
 
         // The screen goes up at launch, with nothing waiting behind it. If it
         // went up mid-flow instead — a device that couldn't keep the answer
-        // from last time — the transcript is still here and the user has
+        // from last time — the recording is still here and the user has
         // answered, so finish what they asked for.
-        if lastTranscript != nil {
+        if recording != nil {
             startOrganize()
         }
     }
@@ -168,32 +178,8 @@ final class CaptureViewModel {
 
     private func runCaptureLifecycle() async {
         state = .requestingPermissions
-        guard await audioCapture.requestPermission() else {
+        guard await recorder.requestPermission() else {
             state = .failed(.microphonePermissionDenied)
-            return
-        }
-        guard !Task.isCancelled else { return }
-
-        do {
-            try await assetManager.ensureAssets(for: locale, transcriber: transcription.transcriber) { [weak self] status in
-                guard let self else { return }
-                switch status {
-                case .needsDownload:
-                    self.state = .downloadingAssets(progress: 0)
-                case .downloading(let progress):
-                    self.state = .downloadingAssets(progress: progress)
-                case .checking, .ready, .unsupported, .failed:
-                    break
-                }
-            }
-        } catch SpeechAssetError.unsupported {
-            state = .failed(.assetsUnsupported)
-            return
-        } catch SpeechAssetError.installFailed(let message) {
-            state = .failed(.assetDownloadFailed(message))
-            return
-        } catch {
-            state = .failed(.assetDownloadFailed(error.localizedDescription))
             return
         }
         guard !Task.isCancelled else { return }
@@ -203,41 +189,28 @@ final class CaptureViewModel {
 
     private func beginRecording() {
         silenceDetector = SilenceDetector()
-        isFinishingRecording = false
         let startedAt = clock.now
 
-        let buffers: AsyncStream<AVAudioPCMBuffer>
         let levels: AsyncStream<Float>
-        let transcriptUpdates: AsyncStream<TranscriptUpdate>
         do {
-            (buffers, levels) = try audioCapture.start()
-            transcriptUpdates = try transcription.start()
+            levels = try recorder.start()
         } catch {
             state = .failed(.captureFailed(error.localizedDescription))
             return
         }
 
-        state = .recording(liveTranscript: "", level: 0, elapsed: .zero)
+        state = .recording(level: 0, elapsed: .zero)
 
-        // Three independent consumers, all MainActor-isolated (they're
-        // spawned from this MainActor method, so `Task { }` inherits that
-        // isolation): buffers just feed the transcriber, levels drive
-        // elapsed/level UI state and the silence check, and transcript
-        // updates drive the live-text state and double as an activity
-        // signal per the plan (a volatile update can arrive without the
-        // meter crossing threshold, e.g. quiet speech).
-        let bufferTask = Task { [weak self] in
-            for await buffer in buffers {
-                self?.transcription.append(buffer)
-            }
-        }
-
-        let levelTask = Task { [weak self] in
+        // The meter is the only signal now that nothing is transcribed while
+        // the user talks — which is what `SilenceDetector` was built around:
+        // it drives the elapsed time and the level on screen, the pause that
+        // stops a recording, and the five-minute cap.
+        levelTask = Task { [weak self] in
             guard let self else { return }
             for await level in levels {
-                guard case .recording(let liveTranscript, _, _) = self.state else { continue }
+                guard case .recording = self.state else { continue }
                 let elapsed = self.clock.now - startedAt
-                self.state = .recording(liveTranscript: liveTranscript, level: level, elapsed: elapsed)
+                self.state = .recording(level: level, elapsed: elapsed)
 
                 switch self.silenceDetector.evaluate(elapsed: elapsed, level: level) {
                 case .continue:
@@ -247,62 +220,41 @@ final class CaptureViewModel {
                 }
             }
         }
-
-        let transcriptTask = Task { [weak self] in
-            guard let self else { return }
-            for await update in transcriptUpdates {
-                guard case .recording(_, let level, let elapsed) = self.state else { continue }
-                self.state = .recording(liveTranscript: update.displayText, level: level, elapsed: elapsed)
-
-                let hasSpeech = !update.volatileText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                guard hasSpeech else { continue }
-                let elapsedNow = self.clock.now - startedAt
-                if self.silenceDetector.evaluate(elapsed: elapsedNow, isActive: true) == .hardCapReached {
-                    self.finishRecording()
-                }
-            }
-        }
-
-        recordingTasks = [bufferTask, levelTask, transcriptTask]
     }
 
-    /// Stops capture (from a manual tap, auto-stop, an interruption, or the
-    /// hard cap) and moves on to organizing. Idempotent — safe to call from
-    /// more than one signal racing to end the same recording.
+    /// Stops recording (from a manual tap, auto-stop, an interruption, or the
+    /// hard cap) and moves on to the upload. Idempotent — safe to call from
+    /// more than one signal racing to end the same recording, because it runs
+    /// start to finish without suspending and leaves the state somewhere other
+    /// than `.recording` however it goes.
     private func finishRecording() {
-        guard case .recording = state, !isFinishingRecording else { return }
-        isFinishingRecording = true
+        guard case .recording = state else { return }
 
-        recordingTasks.forEach { $0.cancel() }
-        recordingTasks = []
-        audioCapture.stop()
+        levelTask?.cancel()
+        levelTask = nil
 
-        lifecycleTask?.cancel()
-        lifecycleTask = Task { [weak self] in
-            await self?.organizeCapturedTranscript()
+        guard let finished = recorder.stop() else {
+            state = .failed(.captureFailed("The recording didn't save. Try again."))
+            return
         }
-    }
 
-    private func organizeCapturedTranscript() async {
-        let finalTranscript = await transcription.finish()
-        isFinishingRecording = false
-
-        let trimmed = finalTranscript.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else {
+        guard finished.duration >= Self.minimumDuration else {
+            delete(finished)
             state = .failed(.emptyRecording)
             return
         }
 
-        lastTranscript = trimmed
+        recording = finished
         startOrganize()
     }
 
     // MARK: - Organizing
 
-    /// Decides the route before anything runs, because two of its outcomes are
-    /// screens rather than a tidy: the first-run screen, and the quota wall.
+    /// Decides the route before anything is sent, because two of its outcomes
+    /// are screens rather than a tidy: the first-run screen, and the quota
+    /// wall. Either way the recording stays where it is.
     private func startOrganize() {
-        guard let transcript = lastTranscript else { return }
+        guard let recording else { return }
 
         switch route() {
         case .cloud:
@@ -317,8 +269,12 @@ final class CaptureViewModel {
         }
 
         organizeTask?.cancel()
+        // Set here rather than inside the task, so the state leaves
+        // `.recording` in the same turn the recording stopped — nothing racing
+        // to end it can find it still running.
+        state = .uploading
         organizeTask = Task { [weak self] in
-            await self?.run(transcript)
+            await self?.run(recording)
         }
     }
 
@@ -326,15 +282,29 @@ final class CaptureViewModel {
         routing.route(consentGrantedThisSession: hasGrantedConsentThisSession)
     }
 
-    private func run(_ transcript: String) async {
+    private func run(_ recording: AudioRecorderService.Recording) async {
         // `reset()` between scheduling this task and its first line would
         // otherwise leave a spinner on a screen that's back at idle.
         guard !Task.isCancelled else { return }
 
-        state = .organizing
+        let caption = Task { [weak self] in
+            try? await Task.sleep(for: Self.uploadCaption)
+            guard let self, !Task.isCancelled, case .uploading = self.state else { return }
+            self.state = .organizing
+        }
+        defer { caption.cancel() }
 
-        switch await OrganizeRun(organizer: routing.organizer(), source: .app, log: log).run(transcript) {
+        let result = await OrganizeRun(source: .app, log: log).run(
+            audioAt: recording.url,
+            durationSeconds: recording.duration,
+            locale: locale,
+            with: routing.voiceOrganizer()
+        )
+
+        switch result {
         case .success(let outcome):
+            // The note is here, so the recording has done its job.
+            discardRecording()
             state = .preview(outcome.note)
         case .failure(let failure):
             state = .unavailable(failure)
@@ -342,5 +312,18 @@ final class CaptureViewModel {
             // Cancelled — `reset()` has already put the machine back to idle.
             break
         }
+    }
+
+    // MARK: - The file
+
+    private func discardRecording() {
+        if let recording {
+            delete(recording)
+        }
+        recording = nil
+    }
+
+    private func delete(_ recording: AudioRecorderService.Recording) {
+        try? FileManager.default.removeItem(at: recording.url)
     }
 }

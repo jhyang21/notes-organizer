@@ -8,7 +8,7 @@ import Foundation
 /// The network is injected as a closure, so the tests below it never open a
 /// socket: they hand back canned bytes and assert on the request that would
 /// have been sent.
-public struct CloudOrganizer: NoteOrganizing {
+public struct CloudOrganizer: NoteOrganizing, VoiceOrganizing {
     /// Long enough for a long transcript and a slow model, short enough that a
     /// wedged call doesn't sit on a user's screen forever.
     static let timeout: TimeInterval = 90
@@ -16,6 +16,14 @@ public struct CloudOrganizer: NoteOrganizing {
     /// The voice path uploads a recording and waits for it to be transcribed
     /// before the model even starts, so it gets more room than the text path.
     static let audioTimeout: TimeInterval = 150
+
+    /// The session's own ceiling. `URLSession` takes whichever is *smaller*,
+    /// this or the request's own `timeoutInterval`, so a session set to the
+    /// text path's ninety seconds would quietly cut the audio path's hundred
+    /// and fifty down to it — a long recording would fail on a clock the
+    /// request never asked for. Setting it to the longest any request may take
+    /// leaves each request's own value the one that decides.
+    static let sessionTimeout: TimeInterval = max(timeout, audioTimeout)
 
     /// TidyNote's function on a project it shares with another app, so the
     /// name carries the app, not just the verb.
@@ -258,11 +266,19 @@ public struct CloudOrganizer: NoteOrganizing {
     /// connectivity — an offline user should see "You're offline" now, not in
     /// ninety seconds.
     public static func urlSessionTransport() -> Transport {
+        let session = URLSession(configuration: sessionConfiguration())
+        return { request in try await session.data(for: request) }
+    }
+
+    /// Split out from the transport so the timeout the session imposes on
+    /// every request can be asserted on. `timeoutIntervalForResource` is left
+    /// at its default: it measures the whole transfer rather than a stall, and
+    /// capping that would punish a slow upload of a perfectly good recording.
+    static func sessionConfiguration() -> URLSessionConfiguration {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.waitsForConnectivity = false
-        configuration.timeoutIntervalForRequest = timeout
-        let session = URLSession(configuration: configuration)
-        return { request in try await session.data(for: request) }
+        configuration.timeoutIntervalForRequest = sessionTimeout
+        return configuration
     }
 
     /// Sent so a server-side log can tell which build produced a request;

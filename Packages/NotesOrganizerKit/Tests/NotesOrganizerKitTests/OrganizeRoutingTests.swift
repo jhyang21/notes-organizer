@@ -91,4 +91,20 @@ struct OrganizeRoutingTests {
         #expect(produced.title == "Cloud")
         #expect(await cloud.receivedTranscripts == ["a transcript worth organizing"])
     }
+
+    @Test("the voice path runs on the same organizer as the text path")
+    func voiceOrganizerIsTheSameOne() async throws {
+        let (store, cleanup) = try makeStore()
+        defer { cleanup() }
+
+        let cloud = MockOrganizer(result: OrganizedNote(title: "Cloud", sections: [], actionItems: []))
+        let routing = OrganizeRouting(store: store, cloud: cloud)
+        let recording = URL(fileURLWithPath: "/tmp/capture-test.m4a")
+
+        let produced = try await routing.voiceOrganizer()
+            .organize(audioAt: recording, durationSeconds: 42, locale: Locale(identifier: "en_US"))
+
+        #expect(produced.title == "Cloud")
+        #expect(await cloud.receivedRecordings == [recording])
+    }
 }

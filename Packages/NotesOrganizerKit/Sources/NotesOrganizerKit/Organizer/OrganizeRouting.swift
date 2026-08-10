@@ -12,11 +12,12 @@ import Foundation
 /// quota a response overwrites.
 public struct OrganizeRouting: Sendable {
     private let store: EntitlementStore
-    private let cloud: NoteOrganizing
+    private let cloud: NoteOrganizing & VoiceOrganizing
 
     /// - Parameter cloud: defaults to a `CloudOrganizer` on the same store.
-    ///   Tests and previews pass a `MockOrganizer` instead.
-    public init(store: EntitlementStore = .shared, cloud: NoteOrganizing? = nil) {
+    ///   Tests and previews pass a `MockOrganizer` instead. One object covers
+    ///   text and voice, because one service does both.
+    public init(store: EntitlementStore = .shared, cloud: (NoteOrganizing & VoiceOrganizing)? = nil) {
         self.store = store
         self.cloud = cloud ?? CloudOrganizer(store: store)
     }
@@ -35,6 +36,11 @@ public struct OrganizeRouting: Sendable {
     }
 
     public func organizer() -> NoteOrganizing { cloud }
+
+    /// The same object, for a run that starts from a recording rather than
+    /// from text. Handed back separately so a caller can only ask for the
+    /// path it actually has input for.
+    public func voiceOrganizer() -> VoiceOrganizing { cloud }
 
     // MARK: - Plan and consent
 

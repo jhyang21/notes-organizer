@@ -7,6 +7,18 @@ public protocol NoteOrganizing: Sendable {
     func organize(_ text: String) async throws -> OrganizedNote
 }
 
+/// Turns a recording into an `OrganizedNote` — transcribing and organizing in
+/// one call, since the device does neither. Separate from `NoteOrganizing`
+/// because the share extension is handed text and has no use for it;
+/// `CloudOrganizer` conforms to both.
+public protocol VoiceOrganizing: Sendable {
+    /// - Parameters:
+    ///   - durationSeconds: how long the recording runs, as a hint for the
+    ///     service's own limits.
+    ///   - locale: what the user is likely speaking, for the transcriber.
+    func organize(audioAt url: URL, durationSeconds: Double, locale: Locale) async throws -> OrganizedNote
+}
+
 /// Reasons `organize(_:)` can fail to produce a note. Every one of them is
 /// either something the user can act on now — say more, get back online,
 /// record it in two parts — or a wall with a way past it. Tidying happens on
@@ -35,10 +47,11 @@ public enum OrganizeFailure: Error, Equatable, Sendable {
     case cloudUnavailable(reason: String)
 }
 
-/// A configurable `NoteOrganizing` stand-in for tests and SwiftUI previews.
-/// An actor, so it's trivially `Sendable` and safe to call from concurrent
-/// test code without extra locking.
-public actor MockOrganizer: NoteOrganizing {
+/// A configurable stand-in for tests and SwiftUI previews, standing in for
+/// both organizers at once so a preview needs only one of them. An actor, so
+/// it's trivially `Sendable` and safe to call from concurrent test code
+/// without extra locking.
+public actor MockOrganizer: NoteOrganizing, VoiceOrganizing {
     public enum Outcome: Sendable {
         case success(OrganizedNote)
         case failure(OrganizeFailure)
@@ -46,6 +59,9 @@ public actor MockOrganizer: NoteOrganizing {
 
     private var outcome: Outcome
     public private(set) var receivedTranscripts: [String] = []
+    /// The recordings the voice path was asked to organize, so a test can
+    /// check the same file went up again on a retry.
+    public private(set) var receivedRecordings: [URL] = []
 
     public init(result: OrganizedNote) {
         self.outcome = .success(result)
@@ -67,6 +83,15 @@ public actor MockOrganizer: NoteOrganizing {
 
     public func organize(_ text: String) async throws -> OrganizedNote {
         receivedTranscripts.append(text)
+        return try produce()
+    }
+
+    public func organize(audioAt url: URL, durationSeconds: Double, locale: Locale) async throws -> OrganizedNote {
+        receivedRecordings.append(url)
+        return try produce()
+    }
+
+    private func produce() throws -> OrganizedNote {
         switch outcome {
         case .success(let note):
             return note

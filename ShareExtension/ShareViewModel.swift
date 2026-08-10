@@ -94,7 +94,7 @@ final class ShareViewModel {
 
         state = .organizing(wordCount: WordCounter.count(text))
 
-        switch await OrganizeRun(organizer: routing.organizer(), source: .shareExtension, log: log).run(text) {
+        switch await OrganizeRun(source: .shareExtension, log: log).run(text, with: routing.organizer()) {
         case .success(let outcome):
             state = .preview(outcome.note)
         case .failure(let failure):

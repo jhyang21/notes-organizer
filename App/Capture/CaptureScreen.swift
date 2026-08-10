@@ -1,7 +1,7 @@
 import NotesOrganizerKit
 import SwiftUI
 
-/// The single-screen capture flow: idle → recording → organizing → preview.
+/// The single-screen capture flow: idle → recording → sending → preview.
 /// The preview, save actions, and unavailable states are all
 /// `NotesOrganizerKit` views, so the share extension shows the user the same
 /// screens the app does.
@@ -21,12 +21,12 @@ struct CaptureScreen: View {
                     idleView
                 case .requestingPermissions:
                     statusView(message: "Requesting microphone access…")
-                case .downloadingAssets(let progress):
-                    downloadingView(progress: progress)
-                case .recording(let liveTranscript, let level, let elapsed):
-                    recordingView(liveTranscript: liveTranscript, level: level, elapsed: elapsed)
+                case .recording(let level, let elapsed):
+                    recordingView(level: level, elapsed: elapsed)
+                case .uploading:
+                    sendingView(message: "Sending your recording…")
                 case .organizing:
-                    statusView(message: "Organizing your note…")
+                    sendingView(message: "Turning it into a note…")
                 case .preview(let note):
                     previewView(note: note)
                 case .failed(let failure):
@@ -101,28 +101,30 @@ struct CaptureScreen: View {
         }
     }
 
-    private func downloadingView(progress: Double) -> some View {
+    /// Both halves of the wait, which look the same to the user and read
+    /// differently on purpose: the caption is the honest part, since a long
+    /// recording spends most of the wait on a server we can't see into.
+    private func sendingView(message: String) -> some View {
         VStack(spacing: 16) {
-            ProgressView(value: progress)
-                .frame(width: 200)
-            Text("Downloading the speech model…")
+            ProgressView()
+            Text(message)
                 .font(.headline)
                 .foregroundStyle(.secondary)
+            Text("Long recordings can take up to a minute.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
         }
     }
 
-    private func recordingView(liveTranscript: String, level: Float, elapsed: Duration) -> some View {
+    private func recordingView(level: Float, elapsed: Duration) -> some View {
         VStack(spacing: 24) {
             RecordingIndicatorView(level: level, elapsed: elapsed)
 
-            ScrollView {
-                Text(liveTranscript.isEmpty ? "Listening…" : liveTranscript)
-                    .font(.body)
-                    .foregroundStyle(liveTranscript.isEmpty ? .secondary : .primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .frame(maxHeight: 220)
+            Text("We'll transcribe when you stop.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
 
             Text("Recording stops automatically after a pause, or after 5 minutes.")
                 .font(.caption)
@@ -168,25 +170,19 @@ private extension CaptureFailure {
     var title: String {
         switch self {
         case .microphonePermissionDenied: "Microphone access needed"
-        case .assetsUnsupported: "Speech model unavailable"
-        case .assetDownloadFailed: "Couldn't download speech model"
         case .captureFailed: "Recording failed"
-        case .emptyRecording: "We didn't catch anything"
+        case .emptyRecording: "Nothing to tidy"
         }
     }
 
     var message: String {
         switch self {
         case .microphonePermissionDenied:
-            "TidyNote needs microphone access to transcribe your voice. Enable it in Settings."
-        case .assetsUnsupported:
-            "This device can't transcribe speech in this language."
-        case .assetDownloadFailed(let reason):
-            reason
+            "TidyNote needs the microphone to record what you say. Turn it on in Settings."
         case .captureFailed(let reason):
             reason
         case .emptyRecording:
-            "Try again and speak for a moment before stopping."
+            "We didn't hear anything. Try again and speak for a few seconds."
         }
     }
 }
