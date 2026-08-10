@@ -127,6 +127,39 @@ struct CloudOrganizerVoiceTests {
         #expect(raw[start..<(start + audioBytes.count)] == audioBytes)
     }
 
+    /// The bug this locks out: `URLSession` applies whichever timeout is
+    /// smaller, the session's or the request's, so a session configured at the
+    /// text path's ninety seconds silently cut the audio path's hundred and
+    /// fifty down to ninety. The per-request values stay the ones that decide,
+    /// which means the session may never sit below the longest of them.
+    @Test("the shared session never undercuts a request's own timeout")
+    func sessionTimeoutLeavesRequestsAuthoritative() async throws {
+        let (store, suiteName, defaults) = try makeStore()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let recording = try makeRecording(audioBytes)
+        defer { try? FileManager.default.removeItem(at: recording) }
+
+        let configuration = CloudOrganizer.sessionConfiguration()
+        #expect(configuration.timeoutIntervalForRequest >= CloudOrganizer.audioTimeout)
+        #expect(configuration.timeoutIntervalForRequest >= CloudOrganizer.timeout)
+        // An offline user should hear about it now, not in two and a half
+        // minutes.
+        #expect(configuration.waitsForConnectivity == false)
+
+        // And the two paths still ask for different amounts of room.
+        #expect(CloudOrganizer.audioTimeout > CloudOrganizer.timeout)
+
+        let spy = VoiceTransportSpy()
+        let voice = makeOrganizer(store: store, transport: spy.responding(status: 200, json: successJSON))
+        _ = try await voice.organize(audioAt: recording, durationSeconds: 42, locale: Locale(identifier: "en_US"))
+        #expect(spy.lastRequest?.timeoutInterval == CloudOrganizer.audioTimeout)
+
+        let textSpy = VoiceTransportSpy()
+        let text = makeOrganizer(store: store, transport: textSpy.responding(status: 200, json: successJSON))
+        _ = try await text.organize("a transcript worth organizing")
+        #expect(textSpy.lastRequest?.timeoutInterval == CloudOrganizer.timeout)
+    }
+
     @Test("a locale with nothing to say is left out rather than sent empty")
     func omitsEmptyLocale() async throws {
         let (store, suiteName, defaults) = try makeStore()

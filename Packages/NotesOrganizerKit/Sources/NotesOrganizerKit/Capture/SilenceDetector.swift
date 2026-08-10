@@ -3,11 +3,10 @@ import Foundation
 /// Pure silence/duration policy for voice capture: decides when a recording
 /// should auto-stop from inactivity, or has hit its hard time cap. No I/O —
 /// the caller feeds it the elapsed recording time and whether that instant
-/// counted as speech activity (an audio level above threshold, or a
-/// non-empty volatile-transcript update, per the plan) and reads back a
-/// decision. Kept in the package, unlike `AudioCaptureService` and
-/// `CaptureViewModel`, because it has no AVFoundation/Speech dependency and
-/// is fully unit-testable on CI.
+/// counted as speech activity (an audio level above threshold) and reads back
+/// a decision. Kept in the package, unlike `AudioRecorderService` and
+/// `CaptureViewModel`, because it has no AVFoundation dependency and is fully
+/// unit-testable on CI.
 public struct SilenceDetector: Sendable {
     public struct Configuration: Sendable {
         public var activityThreshold: Float
