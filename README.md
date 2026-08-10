@@ -3,27 +3,36 @@
 A native SwiftUI iPhone app that turns messy input — a voice ramble, or an
 existing Apple Note shared into the app — into a cleanly structured Apple
 Note. It organizes; it does not summarize. Apple Notes stays the source of
-truth. Everything runs on-device (Apple FoundationModels for organizing,
-SpeechAnalyzer for transcription): no backend, no accounts, no API costs.
+truth. The AI runs in the cloud — OpenAI, reached through a Supabase edge
+function we own — so there are no accounts to make, but there is a backend
+and there are API costs. A RevenueCat subscription pays for them.
 
 ## How it works
 
 Speak into the app, or share an Apple Note (or any text) into it from the
-share sheet. The on-device model turns that text into a title, sections with
-bullets, and action items, and shows a preview. Saving hands Apple Notes a
-Markdown file, which Notes imports as real rich text — headings, bullets,
-and checkboxes all survive.
+share sheet. A recording is uploaded to the edge function and transcribed by
+Whisper; text shared in skips that step. Either way a GPT model turns the
+text into a title, sections with bullets, and action items, and the app
+shows a preview. Saving hands Apple Notes a Markdown file, which Notes
+imports as real rich text — headings, bullets, and checkboxes all survive.
+
+The free plan allows five tidies a calendar month, counted on the server
+against an anonymous per-install identifier. TidyNote Pro lifts the cap.
 
 ## Architecture
 
 The app (`App/`) and the share extension (`ShareExtension/`) are two thin
 targets that both sit on top of `Packages/NotesOrganizerKit`, a Swift
-package holding everything they share: the note model, the organizer and
-its prompt, transcript chunking and merging, Markdown/plain-text rendering,
+package holding everything they share: the note model, the cloud client,
+transcript chunking and merging, Markdown/plain-text rendering,
 and the SwiftUI preview and save-actions views. Anything used by both
-targets lives in the package rather than being duplicated. Model-adjacent
-code sits behind a `NoteOrganizing` protocol with a mock implementation, so
-the unit test suite runs on CI without a real on-device model.
+targets lives in the package rather than being duplicated. The cloud client
+sits behind a `NoteOrganizing` protocol and takes an injected `Transport`,
+so the unit test suite runs on CI without touching the network.
+
+The server side lives in `supabase/functions/tidynote_organize`: one edge
+function that holds the OpenAI key, counts the month's tidies, rate-limits
+by IP hash, and returns the organized note.
 
 ## Building
 

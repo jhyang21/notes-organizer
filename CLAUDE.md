@@ -5,8 +5,12 @@
 A native SwiftUI iPhone app that turns messy input — a voice ramble, or an
 existing Apple Note shared into the app — into a cleanly structured Apple
 Note. It organizes; it does not summarize. Apple Notes stays the source of
-truth. All AI runs on-device (Apple FoundationModels + SpeechAnalyzer): no
-backend, no accounts, no API costs.
+truth. The AI runs in the cloud: the app uploads the recording or the shared
+text to a Supabase edge function (`supabase/functions/tidynote_organize`),
+which calls OpenAI for transcription and organizing and returns the note.
+The backend shares the `relora-prod` Supabase project, with every object
+prefixed `tidynote_`. There are no accounts — installs are identified by an
+anonymous `tidy:<UUID>` — and RevenueCat carries subscription status.
 
 Full plan: `C:\Users\1025y\.claude\plans\use-this-product-one-pager-prancy-feigenbaum.md`
 (sections: Architecture, Repo layout, Milestones). Read it before starting
@@ -23,10 +27,12 @@ any milestone.
   by both the app and the share extension — models, the organizer,
   chunking/merging/sanitizing, renderers — goes in the package, not
   duplicated in `App/` or `ShareExtension/`.
-- **Unit tests never call the real FoundationModels model.** CI simulators
-  have no Apple Intelligence model available. Model-adjacent code sits
-  behind a `NoteOrganizing` protocol with a mock implementation for tests;
-  only the mock is exercised in CI.
+- **Kit tests never touch the network — cloud calls go through an injected
+  `Transport`.** `CloudOrganizer` takes a `Transport` closure
+  (`(URLRequest) -> (Data, URLResponse)`); tests hand it a stub and assert
+  on the request they get. The organizer sits behind a `NoteOrganizing`
+  protocol so callers can be tested against a mock too. Nothing in CI
+  reaches a real endpoint or spends a token.
 - Repo is authored on Windows — there is no local Xcode. Everything is
   written as plain text and verified via GitHub Actions
   (`macos-26` runners). Don't assume a local build; push and watch CI.
@@ -83,6 +89,7 @@ CI runs a plain `bundle install`.
 
 ## Milestones
 
-M0 (this skeleton) through M7 are tracked in the plan's Milestones section.
+Milestones are tracked in the plan's Milestones section — M0 through M7 built
+the MVP, M8 onward moved it to the cloud and to the App Store.
 Current state and what's next live there, not here — check it before
 picking up work.

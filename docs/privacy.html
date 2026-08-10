@@ -36,12 +36,12 @@
 <p class="nav"><a href="./">TidyNote</a></p>
 
 <h1>Privacy Policy</h1>
-<p class="date">Effective 8 August 2026</p>
+<p class="date">Effective 9 August 2026</p>
 
 <div class="lede">
-  <p>TidyNote has no accounts and no tracking. Tidies that run on your iPhone
-  never leave it. A premium tidy sends the note's text to our server so a
-  larger model can organize it; we don't keep the text.</p>
+  <p>TidyNote has no accounts and no tracking. Every tidy runs on our server:
+  the app sends your recording, or the text you shared in, over an encrypted
+  connection, and gets the organized note back. We keep neither one.</p>
 </div>
 
 <p>TidyNote is made by immForm. This policy explains what the app handles and
@@ -51,54 +51,57 @@ extension.</p>
 <h2>We don't ask who you are</h2>
 <p>There is no sign-up, no login, no email address, no password. The app
 creates a random identifier on first launch — a string like
-<code>tidy:1F3C…</code> — and uses it to count how many premium tidies you have
-used this month and to check whether you have a subscription. It is not derived
-from your name, your email, your phone number, your device identifier, or an
+<code>tidy:1F3C…</code> — and uses it to count how many tidies you have used
+this month and to check whether you have a subscription. It is not derived from
+your name, your email, your phone number, your device identifier, or an
 advertising identifier, and it is not linked to any of them. Delete the app and
 that identifier is gone.</p>
 
-<h2>What never leaves your iPhone</h2>
+<h2>What TidyNote sends</h2>
+<p>Every tidy runs on our server. When you record, the app sends the
+<em>recording</em> over an encrypted connection to TidyNote's server, which
+passes it to our AI provider to be turned into text and then organized, and
+returns the finished note to your phone. When you share text in instead, the
+same thing happens without the transcription step.</p>
 <ul>
-  <li><strong>Audio.</strong> Recordings are transcribed on your iPhone and are
-  never uploaded, to us or to anyone else.</li>
-  <li><strong>On-device tidies.</strong> When the note is organized by the model
-  built into your iPhone, no text is sent anywhere.</li>
-  <li><strong>Your notes.</strong> TidyNote does not store your notes. Finished
-  notes go where you send them — Apple Notes, the clipboard, the share sheet.</li>
-  <li><strong>Diagnostics.</strong> The diagnostics log in the app stays on the
-  device. Nothing is reported back to us.</li>
-</ul>
-
-<h2>What a premium tidy sends</h2>
-<p>When you run a premium tidy, the app sends the <em>text</em> of that note —
-never audio — over an encrypted connection to TidyNote's server, which passes it
-to our AI provider, gets the organized note back, and returns it to your phone.</p>
-<ul>
-  <li><strong>We don't store the text.</strong> It exists in memory for the
-  length of the request and is not written to any database or log of ours.</li>
-  <li><strong>Our AI provider is OpenAI.</strong> Under OpenAI's API terms, text
-  sent through the API is not used to train their models, and it is retained for
-  up to about 30 days for abuse monitoring before deletion. We name them here so
-  you can judge that for yourself; the app itself does not display vendor names.</li>
+  <li><strong>We don't keep your recording or your text.</strong> Each exists in
+  memory for the length of the request and is not written to any database or log
+  of ours.</li>
+  <li><strong>Our AI provider is OpenAI.</strong> They transcribe the recording
+  and organize the note. Under OpenAI's API terms, what we send through the API
+  is not used to train their models, and it is retained for up to about 30 days
+  for abuse monitoring before deletion. That covers recordings and the text made
+  from them as well as text you share in. We name them here so you can judge
+  that for yourself; the app itself does not display vendor names.</li>
   <li><strong>Our server keeps counters, not content.</strong> A row holding
-  your anonymous identifier, the current month, and how many premium tidies it
-  has used.</li>
+  your anonymous identifier, the current month, and how many tidies it has
+  used.</li>
   <li><strong>Rate limiting.</strong> To stop abuse, the server keeps a
   short-lived counter against a one-way SHA-256 hash of the requesting IP
   address. We do not store the address itself and cannot recover it from the
   hash.</li>
   <li><strong>Request logs.</strong> One line per request: how long it took, the
   response status, whether the plan was free or Pro, token counts, and a short
-  hash prefix of the anonymous identifier. The note's text never appears in a
-  log.</li>
+  hash prefix of the anonymous identifier. Your recording and your text never
+  appear in a log.</li>
+</ul>
+
+<h2>What stays on your iPhone</h2>
+<ul>
+  <li><strong>Your notes.</strong> TidyNote does not store your notes. Finished
+  notes go where you send them — Apple Notes, the clipboard, the share sheet.</li>
+  <li><strong>Diagnostics.</strong> The diagnostics log in the app stays on the
+  device. Nothing is reported back to us.</li>
+  <li><strong>Who you are.</strong> There is no account to make and no tracking
+  of any kind, so nothing that identifies you is sent with a tidy.</li>
 </ul>
 
 <h2>Subscriptions</h2>
 <p>Apple processes every payment. We never see your card, your Apple Account, or
 your billing address. RevenueCat, our subscription provider, records whether the
 anonymous identifier above has an active subscription so the app and server know
-whether to allow unlimited premium tidies. That record is purchase status tied
-to a random string — not to you.</p>
+whether to allow unlimited tidies. That record is purchase status tied to a
+random string — not to you.</p>
 
 <h2>What we don't do</h2>
 <ul>
@@ -112,21 +115,23 @@ to a random string — not to you.</p>
 <h2>Who else touches the data</h2>
 <p>Three companies process data on our behalf, each for one narrow job:
 <strong>Supabase</strong> hosts the server and the counter database,
-<strong>OpenAI</strong> organizes the text of premium tidies, and
+<strong>OpenAI</strong> transcribes recordings and organizes notes, and
 <strong>RevenueCat</strong> records subscription status. Apple handles payment
 and app delivery under its own privacy policy.</p>
 
 <h2>How long anything is kept</h2>
 <p>Monthly quota counters are kept while they are in use and are not needed
 after the month ends. Rate-limit counters last minutes. Request logs are kept
-short-term for debugging. Note text is not kept by us at all; OpenAI's abuse-
-monitoring copy is deleted on their schedule, about 30 days.</p>
+short-term for debugging. Your recordings and your text are not kept by us at
+all; OpenAI's abuse-monitoring copy of them is deleted on their schedule, about
+30 days.</p>
 
 <h2>Your choices and rights</h2>
 <ul>
-  <li><strong>Don't use premium tidies.</strong> On-device tidies are unlimited
-  and free, and nothing leaves your phone. The app asks once before the first
-  time text is sent, and you can decline.</li>
+  <li><strong>Share text in instead of recording.</strong> The text still goes
+  to our server, but no recording of your voice does. The app asks once, before
+  the first tidy leaves your phone, and you can decline — though nothing can be
+  organized until you agree.</li>
   <li><strong>Delete everything on your side</strong> by deleting the app. That
   removes the recordings, the transcripts, the diagnostics log, and the
   anonymous identifier.</li>
@@ -146,7 +151,7 @@ collect anything from them.</p>
 
 <h2>Where data is handled</h2>
 <p>Our providers process data on servers in the United States. If you use the app
-from elsewhere, the text of a premium tidy is handled there.</p>
+from elsewhere, your recordings and your text are handled there.</p>
 
 <h2>Changes</h2>
 <p>If this policy changes in a way that matters, we will update the date at the

@@ -51,7 +51,7 @@ It organizes. It does not summarize. Every fact, name, number, and date you said
 
 HOW IT WORKS
 
-Record a thought. Your iPhone turns speech into text, then structures it. Save the finished note to Apple Notes, copy it, or share it anywhere.
+Record a thought. TidyNote turns your speech into text, then structures it. Save the finished note to Apple Notes, copy it, or share it anywhere.
 
 Already have a mess of a note? Share it into TidyNote from the share sheet - from Apple Notes or any app that shares text - and get it back organized.
 
@@ -63,21 +63,19 @@ WHAT IT IS GOOD FOR
 - Long voice memos you never go back and listen to
 - Old notes that grew into a wall of text
 
-PRIVATE BY DEFAULT
+PRIVACY
 
-Tidies that run on your iPhone stay on your iPhone. Audio never leaves your device - not for an on-device tidy, not ever. There is no account, no sign-up, and no tracking.
+Every tidy runs on our servers. Your recording, or the text you share in, goes over an encrypted connection to be turned into text and organized, and it isn't kept once the note comes back. The app asks before it sends anything the first time, and you can say no.
 
-Premium tidies send the note's text over an encrypted connection so a larger model can organize it, and the text isn't kept once the note comes back. The app asks before it does this the first time, and you can say no.
+There is no account, no sign-up, and no tracking. Nothing you save is stored by us - finished notes go where you send them.
 
 FREE AND PRO
 
-Tidies that run on your iPhone are free and unlimited.
-
-Premium tidies are capped at 5 a month on the free plan. TidyNote Pro makes them unlimited: $4.99 a month or $39.99 a year, with a 7-day free trial. Payment is charged to your Apple Account at confirmation of purchase, and the subscription renews automatically unless you turn off auto-renew at least 24 hours before the period ends. Manage or cancel it in Settings on your iPhone, under your name then Subscriptions.
+Five tidies a month free. TidyNote Pro makes them unlimited: $4.99 a month or $39.99 a year, with a 7-day free trial. Payment is charged to your Apple Account at confirmation of purchase, and the subscription renews automatically unless you turn off auto-renew at least 24 hours before the period ends. Manage or cancel it in Settings on your iPhone, under your name then Subscriptions.
 
 REQUIREMENTS
 
-iPhone running iOS 26 or later. Tidies that run on your iPhone need an iPhone that supports Apple Intelligence. On other iPhones, premium tidies do the work.
+iPhone running iOS 17 or later.
 
 Privacy Policy: https://jhyang21.github.io/notes-organizer/privacy.html
 Terms of Use: https://jhyang21.github.io/notes-organizer/terms.html
@@ -91,34 +89,30 @@ appear in the description.
 
 ```
 NO ACCOUNT - NOTHING TO DEMO-LOGIN
-TidyNote has no sign-up, no login, and no password. Please leave the demo account fields empty; there is genuinely nothing to sign in to. On first launch the app generates a random anonymous identifier (a string like "tidy:<UUID>") and uses it only to count premium tidies and to look up subscription status. It is not tied to a name, an email, a device identifier, or an advertising identifier.
+TidyNote has no sign-up, no login, and no password. Please leave the demo account fields empty; there is genuinely nothing to sign in to. On first launch the app generates a random anonymous identifier (a string like "tidy:<UUID>") and uses it only to count tidies and to look up subscription status. It is not tied to a name, an email, a device identifier, or an advertising identifier.
 
-TWO KINDS OF TIDY
-1. On-device tidy - free and unlimited. Uses Apple's on-device model (FoundationModels). This requires hardware that supports Apple Intelligence: iPhone 15 Pro or newer, on iOS 26. On older hardware the app falls through to premium tidies instead, and says so.
-2. Premium tidy - runs on our server. The note's TEXT (never audio) is sent over HTTPS to our endpoint, which returns the organized note. The free plan allows 5 per calendar month; TidyNote Pro removes the cap.
+EVERY TIDY IS A SERVER CALL
+Nothing is organized offline; the app does all of it over the network. It records audio on the iPhone, uploads the recording over HTTPS to our endpoint, and our provider turns it into text and organizes it; the finished note comes back to the phone. Text shared into the app takes the same route without the transcription step. We store neither the recording nor the text. The free plan allows 5 tidies per calendar month; TidyNote Pro removes the cap. The review device needs a network connection.
 
 THE FREE LIMIT IS ENFORCED ON THE SERVER
-The 5-per-month cap is not a client-side check. The server keeps the counter against the anonymous identifier and returns HTTP 429 (quota_exhausted) on the 6th call, at which point the app shows the "You've used this month's premium tidies" screen with the TidyNote Pro upsell.
+The 5-per-month cap is not a client-side check. The server keeps the counter against the anonymous identifier and returns HTTP 429 (quota_exhausted) on the 6th tidy, at which point the app shows the "You've used this month's tidies" screen with the TidyNote Pro upsell.
 
-HOW TO TEST A PREMIUM TIDY IN SANDBOX
+HOW TO TEST A SUBSCRIPTION IN SANDBOX
 1. Open the app and tap the gear icon (top right of the capture screen) to reach Settings.
 2. Tap "Go Pro" to open the paywall. Buy either the monthly or the annual product with a sandbox Apple Account. The 7-day free trial applies.
-3. Settings should now read "TidyNote Pro" with "Premium tidies are unlimited."
+3. Settings should now read "TidyNote Pro" with "Tidies are unlimited."
 4. Go back, record a short voice note (or share text in, see below), and let it finish.
 5. "Restore Purchases" in Settings re-applies the entitlement.
-To exercise the free path instead, use a fresh install without purchasing: the preview screen shows a "Premium tidy - N left this month" button.
-
-ON-DEVICE TIER NEEDS APPLE INTELLIGENCE HARDWARE
-If the review device is a simulator or an iPhone older than the iPhone 15 Pro, Apple Intelligence is unavailable and the on-device path cannot run. This is expected and handled: the app routes to a premium tidy while the free quota lasts, and shows a clear explanation rather than an error.
+To exercise the free path instead, use a fresh install without purchasing: Settings reads "Tidies left this month: N", and that count drops by one with each tidy.
 
 SHARE EXTENSION
-TidyNote also appears in the iOS share sheet for text. To test it: open Apple Notes (or any app with text), share the note or selected text, choose TidyNote from the share sheet, and the extension organizes it in place. The extension has no purchase UI - StoreKit purchases are not viable inside a share extension - so if the free quota is exhausted there it says "Open TidyNote to go Pro" instead.
+TidyNote also appears in the iOS share sheet for text. Open the TidyNote app once before testing it - the first run shows a one-time screen that explains what gets sent and asks you to agree, and the extension only works after that. Then: open Apple Notes (or any app with text), share the note or selected text, choose TidyNote from the share sheet, and the extension organizes it in place. The extension has no purchase UI - StoreKit purchases are not viable inside a share extension - so if the free quota is exhausted there it says "Open TidyNote to go Pro" instead.
 
-MICROPHONE AND SPEECH PERMISSIONS
-Both are requested only when the user taps record. Speech is transcribed by Apple's on-device SpeechAnalyzer; audio is never uploaded anywhere.
+MICROPHONE PERMISSION
+Requested only when the user taps record. The recording IS uploaded: it goes over HTTPS to our endpoint and on to our provider, which transcribes it and organizes the result. Neither we nor the app keep it, and our provider holds it only for its own abuse monitoring, about 30 days. The privacy policy below says this in full.
 
 PRIVACY POLICY
-https://jhyang21.github.io/notes-organizer/privacy.html - it names our cloud sub-processor and its retention period explicitly. The app's own copy avoids vendor names; the policy does not.
+https://jhyang21.github.io/notes-organizer/privacy.html - it names our sub-processors and their retention periods explicitly, for audio and for text. The app's own copy avoids vendor names; the policy does not.
 ```
 
 ## App Privacy (nutrition labels)
@@ -128,13 +122,19 @@ nothing is linked to the user's identity.
 
 | Data type | Collected | Purpose | Linked to identity | Tracking |
 |---|---|---|---|---|
-| User Content (other user content — the note's text, only on a premium tidy) | Yes | App Functionality | No | No |
+| User Content (audio data — the recording, uploaded for every voice tidy) | Yes | App Functionality | No | No |
+| User Content (other user content — the note's text, uploaded for every tidy) | Yes | App Functionality | No | No |
 | Identifiers (User ID — the anonymous `tidy:<UUID>`) | Yes | App Functionality | No | No |
 | Purchases (Purchase History) | Yes | App Functionality | No | No |
 
+Audio Data sits under the User Content taxonomy, alongside Other User Content.
+The text made from a recording travels with it and is covered by the same two
+rows: the recording goes up, the transcript comes back through the same request,
+and neither is kept.
+
 Not collected: contact info, health, financial info, location, contacts,
-browsing history, search history, usage data, diagnostics, audio data. Audio
-never leaves the device, and the on-device diagnostics log is never transmitted.
+browsing history, search history, usage data, diagnostics. The diagnostics log
+stays on the device and is never transmitted.
 
 ## Screenshots
 
