@@ -209,6 +209,33 @@ struct CloudOrganizerTests {
         #expect(store.planState() == nil)
     }
 
+    /// Both paths read one envelope, so the text path maps these the same way
+    /// the voice path does — a 422 on typed text is the server agreeing there
+    /// was nothing there worth a note.
+    @Test("a 422 is the server saying there was nothing to organize")
+    func mapsNothingToOrganize() async throws {
+        let (store, suiteName, defaults) = try makeStore()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let organizer = makeOrganizer(store: store, transport: TransportSpy().responding(status: 422, json: "{}"))
+
+        await #expect(throws: OrganizeFailure.emptyTranscript) {
+            try await organizer.organize(transcript)
+        }
+    }
+
+    @Test("a 413 is a payload the endpoint won't take")
+    func mapsPayloadTooLarge() async throws {
+        let (store, suiteName, defaults) = try makeStore()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let organizer = makeOrganizer(store: store, transport: TransportSpy().responding(status: 413, json: "{}"))
+
+        await #expect(throws: OrganizeFailure.audioTooLarge) {
+            try await organizer.organize(transcript)
+        }
+    }
+
     @Test("a server error surfaces as the service having a problem")
     func mapsServerError() async throws {
         let (store, suiteName, defaults) = try makeStore()

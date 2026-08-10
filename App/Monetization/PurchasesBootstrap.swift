@@ -11,7 +11,7 @@ import RevenueCat
 /// before the SDK does, RevenueCat never mints an anonymous ID that a later
 /// `logIn` would have to reconcile.
 ///
-/// Nothing here decides whether a premium tidy is allowed. The server re-checks
+/// Nothing here decides whether a tidy is allowed. The server re-checks
 /// entitlement on every call; what the store learns from this file only drives
 /// what the UI says about the plan.
 enum PurchasesBootstrap {

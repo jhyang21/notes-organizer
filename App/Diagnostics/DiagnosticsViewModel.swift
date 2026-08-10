@@ -3,37 +3,15 @@ import NotesOrganizerKit
 import Observation
 import UIKit
 
-/// State for the diagnostics screen: what the model says about itself, what
-/// two sample runs did, and whatever the app and the share extension have
-/// written to the shared log.
+/// State for the diagnostics screen: the Markdown import sample, and whatever
+/// the app and the share extension have written to the shared log.
+///
+/// It runs nothing itself. Every tidy costs a call now, and a workbench that
+/// spends a user's month on a sample would be a trap rather than a tool — the
+/// timings table below already shows what real runs cost.
 @MainActor
 @Observable
 final class DiagnosticsViewModel {
-    enum ModelStatus: Equatable {
-        case checking
-        case ready
-        case unavailable(OrganizeFailure)
-    }
-
-    struct RunResult: Equatable {
-        var seconds: TimeInterval
-        var wordCount: Int
-        var title: String
-        var sectionCount: Int
-        var actionItemCount: Int
-    }
-
-    enum RunState: Equatable {
-        case idle
-        case running
-        case succeeded(RunResult)
-        case failed(String)
-    }
-
-    private(set) var modelStatus: ModelStatus = .checking
-    private(set) var helloWorld: RunState = .idle
-    private(set) var benchmark: RunState = .idle
-
     private(set) var markdownSampleURL: URL?
     private(set) var markdownSampleError: String?
 
@@ -42,17 +20,14 @@ final class DiagnosticsViewModel {
     private(set) var events: [DiagnosticsEvent] = []
 
     private let log: DiagnosticsLog
-    private let organizeRun: OrganizeRun
 
-    init(organizer: NoteOrganizing = FoundationModelOrganizer(), log: DiagnosticsLog = .shared) {
+    init(log: DiagnosticsLog = .shared) {
         self.log = log
-        self.organizeRun = OrganizeRun(organizer: organizer, source: .app, log: log)
     }
 
     // MARK: - Refresh
 
     func refresh() {
-        modelStatus = ModelAvailability.currentFailure().map(ModelStatus.unavailable) ?? .ready
         sharePayloads = log.sharePayloads()
         organizeTimings = log.organizeTimings()
         events = log.events()
@@ -61,35 +36,6 @@ final class DiagnosticsViewModel {
     func clearLog() {
         log.clear()
         refresh()
-    }
-
-    // MARK: - Sample runs
-
-    func runShortSample() async {
-        helloWorld = await run(DiagnosticsSamples.short)
-        refresh()
-    }
-
-    func runLongSample() async {
-        benchmark = await run(DiagnosticsSamples.long)
-        refresh()
-    }
-
-    private func run(_ sample: String) async -> RunState {
-        switch await organizeRun.run(sample) {
-        case .success(let outcome):
-            return .succeeded(RunResult(
-                seconds: outcome.duration,
-                wordCount: outcome.wordCount,
-                title: outcome.note.title,
-                sectionCount: outcome.note.sections.count,
-                actionItemCount: outcome.note.actionItems.count
-            ))
-        case .failure(let failure):
-            return .failed("\(failure)")
-        case nil:
-            return .idle
-        }
     }
 
     // MARK: - Markdown import check

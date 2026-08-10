@@ -282,23 +282,53 @@ struct CloudOrganizerVoiceTests {
         #expect(store.planState() == nil)
     }
 
-    /// 413 is a recording the endpoint won't take, 422 is one with nothing
-    /// audible in it, 500 is the service. All three read as "something went
-    /// wrong" until M15 gives the first two their own copy.
-    @Test("statuses the voice path can meet all read as the service having a problem", arguments: [413, 422, 500])
-    func mapsUnexpectedStatuses(status: Int) async throws {
+    /// The two statuses the user can do something about: a recording the
+    /// endpoint won't take, and one with nothing audible in it. Both get copy
+    /// that says what to do, rather than a shrug.
+    @Test("a recording too big for the endpoint says so")
+    func mapsPayloadTooLarge() async throws {
         let (store, suiteName, defaults) = try makeStore()
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let recording = try makeRecording(audioBytes)
         defer { try? FileManager.default.removeItem(at: recording) }
 
-        let organizer = makeOrganizer(store: store, transport: VoiceTransportSpy().responding(status: status, json: "{}"))
+        let organizer = makeOrganizer(store: store, transport: VoiceTransportSpy().responding(status: 413, json: "{}"))
+
+        await #expect(throws: OrganizeFailure.audioTooLarge) {
+            try await organizer.organize(audioAt: recording, durationSeconds: 42, locale: Locale(identifier: "en_US"))
+        }
+        #expect(store.planState() == nil)
+    }
+
+    @Test("a recording with nothing audible in it reads the same as empty text")
+    func mapsNothingAudible() async throws {
+        let (store, suiteName, defaults) = try makeStore()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let recording = try makeRecording(audioBytes)
+        defer { try? FileManager.default.removeItem(at: recording) }
+
+        let organizer = makeOrganizer(store: store, transport: VoiceTransportSpy().responding(status: 422, json: "{}"))
+
+        await #expect(throws: OrganizeFailure.emptyTranscript) {
+            try await organizer.organize(audioAt: recording, durationSeconds: 42, locale: Locale(identifier: "en_US"))
+        }
+        #expect(store.planState() == nil)
+    }
+
+    @Test("anything else the server says is the service having a problem")
+    func mapsServerError() async throws {
+        let (store, suiteName, defaults) = try makeStore()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let recording = try makeRecording(audioBytes)
+        defer { try? FileManager.default.removeItem(at: recording) }
+
+        let organizer = makeOrganizer(store: store, transport: VoiceTransportSpy().responding(status: 500, json: "{}"))
 
         let failure = await capture {
             _ = try await organizer.organize(audioAt: recording, durationSeconds: 42, locale: Locale(identifier: "en_US"))
         }
         guard case .cloudUnavailable = try #require(failure) else {
-            Issue.record("expected cloudUnavailable for \(status), got \(String(describing: failure))")
+            Issue.record("expected cloudUnavailable, got \(String(describing: failure))")
             return
         }
         #expect(store.planState() == nil)

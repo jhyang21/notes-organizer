@@ -1,53 +1,37 @@
 import Foundation
 
-/// Turns raw transcript text into an `OrganizedNote`. The real
-/// implementation (M5) wraps Apple's on-device language model; tests and
-/// SwiftUI previews use `MockOrganizer` instead, since CI simulators have
-/// no Apple Intelligence model to call.
+/// Turns raw transcript text into an `OrganizedNote`. `CloudOrganizer` is the
+/// only real implementation; tests and SwiftUI previews use `MockOrganizer`
+/// instead, so nothing in CI opens a socket.
 public protocol NoteOrganizing: Sendable {
     func organize(_ text: String) async throws -> OrganizedNote
 }
 
-/// Reasons `organize(_:)` can fail to produce a note.
+/// Reasons `organize(_:)` can fail to produce a note. Every one of them is
+/// either something the user can act on now — say more, get back online,
+/// record it in two parts — or a wall with a way past it. Tidying happens on
+/// our servers, so there is no "this iPhone can't" case left to express.
 public enum OrganizeFailure: Error, Equatable, Sendable {
-    /// The device doesn't support Apple Intelligence at all.
-    case deviceNotEligible
-
-    /// The device supports Apple Intelligence, but the user hasn't turned
-    /// it on in Settings.
-    case appleIntelligenceNotEnabled
-
-    /// Apple Intelligence is enabled but the on-device model assets aren't
-    /// ready yet (still downloading, or temporarily unavailable).
-    case modelNotReady(reason: String)
-
     /// There was nothing to organize.
     case emptyTranscript
 
-    /// A single chunk still exceeds the hard per-call token ceiling after
-    /// chunking, so it can't be sent to the model.
-    case contextOverflow(estimatedTokenCount: Int)
-
-    /// The on-device model couldn't organize this text without losing
-    /// content — it refused it, returned something undecodable, or kept
-    /// summarizing after the retry. The transcript is untouched; the way
-    /// forward is a premium tidy.
-    case onDeviceFailed
-
-    /// This month's premium tidies are spent. A hard wall, not a delay: the
-    /// only ways past it are next month or a subscription.
+    /// This month's tidies are spent. A hard wall, not a delay: the only ways
+    /// past it are next month or a subscription.
     case cloudQuotaExhausted
 
-    /// A premium tidy is the only way forward and the user hasn't agreed to
-    /// send text yet. The app can ask again on the spot; the share extension
-    /// can only point at the app, which is where the question gets answered.
+    /// The user hasn't been told what TidyNote sends yet. The app asks on
+    /// first launch; the share extension can only point at the app, which is
+    /// where the question gets answered.
     case cloudConsentNeeded
 
-    /// A premium tidy needs a connection and there isn't one.
+    /// Tidying needs a connection and there isn't one.
     case networkUnavailable
 
-    /// The premium tidy service answered with something other than a note.
-    /// `reason` is user-facing copy, so it names no vendor and no status code.
+    /// The recording is longer than the service will take.
+    case audioTooLarge
+
+    /// The service answered with something other than a note. `reason` is
+    /// user-facing copy, so it names no vendor and no status code.
     case cloudUnavailable(reason: String)
 }
 

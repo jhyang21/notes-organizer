@@ -4,7 +4,7 @@ import NotesOrganizerKit
 import Observation
 
 /// Reasons a capture can't produce a note that are the app's own —
-/// permissions, model-asset download, the audio pipeline. Everything from the
+/// permissions, speech-asset download, the audio pipeline. Everything from the
 /// organizer onwards is an `OrganizeFailure`, which the package's
 /// `UnavailableView` already has copy and an action for.
 enum CaptureFailure: Equatable {
@@ -19,8 +19,8 @@ enum CaptureFailure: Equatable {
 /// downloadingAssets → recording → organizing → preview, or failed at any
 /// step. Owns `AudioCaptureService`, `TranscriptionService`, and
 /// `SpeechAssetManager`; `OrganizeRouting` supplies the organizer, so tests
-/// and previews swap in `MockOrganizer` by handing over a routing that only
-/// knows about on-device.
+/// and previews swap in a `MockOrganizer` by handing over a routing built
+/// around one.
 @MainActor
 @Observable
 final class CaptureViewModel {
@@ -33,21 +33,13 @@ final class CaptureViewModel {
         case preview(OrganizedNote)
         case failed(CaptureFailure)
         case unavailable(OrganizeFailure)
-        /// A premium tidy that didn't work out, holding on to the note the
-        /// user already had. Losing a good tidy because the optional better
-        /// one failed would be a bad trade.
-        case premiumTidyFailed(note: OrganizedNote, failure: OrganizeFailure)
     }
 
     private(set) var state: State = .idle
 
-    /// What the preview offers after an on-device tidy, or `nil` when there is
-    /// nothing to offer — Pro, a spent quota, the cloud switched off.
-    private(set) var premiumTidyOffer: PremiumTidyOffer?
-
-    /// The one-time cloud consent sheet. Settable so SwiftUI can bind to it;
-    /// a swipe-dismissal lands in `cloudConsentDismissed()`.
-    var isShowingCloudConsent = false
+    /// The first-run screen, which every install sees once before it can
+    /// record anything. Settable so SwiftUI can bind to it.
+    var isShowingFirstRun = false
 
     private let routing: OrganizeRouting
     private let log: DiagnosticsLog
@@ -66,11 +58,8 @@ final class CaptureViewModel {
     /// Kept so every retry re-organizes what the user actually said instead of
     /// throwing the recording away and asking them to say it again.
     private var lastTranscript: String?
-    /// The note a premium tidy would replace, so a failed one can hand it back.
-    private var previewedNote: OrganizedNote?
-    private var pendingPreference: RoutingPolicy.Preference?
-    /// Set once the user says yes, so a device that can't remember the answer
-    /// asks once rather than forever.
+    /// Set once the user has read the first-run screen, so a device where the
+    /// App Group write goes nowhere asks once rather than forever.
     private var hasGrantedConsentThisSession = false
 
     init(
@@ -92,13 +81,13 @@ final class CaptureViewModel {
 
     // MARK: - Intents
 
-    /// Checks Apple Intelligence before anything is recorded, so an
-    /// ineligible iPhone says so on launch rather than after the user has
-    /// talked for two minutes. Only ever moves the machine out of `.idle`.
-    func checkModelAvailability() {
-        guard case .idle = state else { return }
-        guard let failure = ModelAvailability.currentFailure() else { return }
-        state = .unavailable(failure)
+    /// Puts the first-run screen up before anything else on an install that
+    /// hasn't seen it. Told what TidyNote sends first, recorded second — the
+    /// other order would be the app asking forgiveness.
+    func showFirstRunIfNeeded() {
+        if case .consentNeeded = route() {
+            isShowingFirstRun = true
+        }
     }
 
     func startCapture() {
@@ -117,50 +106,30 @@ final class CaptureViewModel {
 
     /// "Try again" on a failure screen. Re-organizes the transcript we still
     /// have rather than discarding a recording the user just made — the only
-    /// thing there is no point re-running is a transcript with nothing in it.
+    /// things there is no point re-running are a transcript with nothing in it
+    /// and a recording too long to send. Both need a new recording.
     func retry() {
-        if case .unavailable(.emptyTranscript) = state {
-            reset()
-            return
-        }
-        guard lastTranscript != nil else {
-            reset()
-            return
-        }
-        startOrganize(preference: .automatic)
-    }
-
-    /// The premium tidy button, on the preview and on the on-device-failure
-    /// screen. Same transcript, forced through the cloud.
-    func requestPremiumTidy() {
-        startOrganize(preference: .forceCloud)
-    }
-
-    /// Puts the note that was on screen before a failed premium tidy back.
-    func returnToPreview() {
-        guard case .premiumTidyFailed(let note, _) = state else { return }
-        showPreview(note)
-    }
-
-    /// Re-reads the plan after the paywall closes. A subscription bought at a
-    /// wall was bought to get past it, so the tidy that hit the wall runs
-    /// again rather than making the user find the button a second time.
-    func refreshPlan() {
         switch state {
-        case .preview:
-            premiumTidyOffer = routing.premiumTidyOffer()
-        case .unavailable, .premiumTidyFailed:
-            guard routing.isPro else { return }
-            requestPremiumTidy()
+        case .unavailable(.emptyTranscript), .unavailable(.audioTooLarge):
+            reset()
         default:
-            break
+            guard lastTranscript != nil else {
+                reset()
+                return
+            }
+            startOrganize()
         }
+    }
+
+    /// Re-reads the plan after the paywall closes. A subscription bought at the
+    /// quota wall was bought to get past it, so the tidy that hit the wall runs
+    /// again rather than making the user say it all over.
+    func refreshPlan() {
+        guard case .unavailable(.cloudQuotaExhausted) = state, routing.isPro else { return }
+        startOrganize()
     }
 
     /// Abandons an in-progress or completed capture and returns to idle.
-    /// Re-runs the availability check on the way, so "Try again" on a
-    /// model-not-ready screen lands back on that screen while the model is
-    /// still unavailable, instead of on a record button that can't work.
     func reset() {
         lifecycleTask?.cancel()
         lifecycleTask = nil
@@ -173,43 +142,26 @@ final class CaptureViewModel {
         audioCapture.stop()
         silenceDetector = SilenceDetector()
         lastTranscript = nil
-        previewedNote = nil
-        premiumTidyOffer = nil
-        pendingPreference = nil
         state = .idle
-        checkModelAvailability()
     }
 
     // MARK: - Consent
 
-    func acceptCloudConsent() {
+    /// The only button on the first-run screen. Kept in the App Group so the
+    /// share extension is covered by the same answer, and in this object too,
+    /// for a device where that write goes nowhere.
+    func acceptFirstRun() {
         routing.setCloudConsentGranted(true)
         hasGrantedConsentThisSession = true
-        isShowingCloudConsent = false
+        isShowingFirstRun = false
 
-        let preference = pendingPreference ?? .automatic
-        pendingPreference = nil
-        startOrganize(preference: preference)
-    }
-
-    func declineCloudConsent() {
-        isShowingCloudConsent = false
-        let preference = pendingPreference
-        pendingPreference = nil
-
-        // A declined premium tidy leaves the note already on screen alone. A
-        // declined automatic run is on hardware that has no other way to
-        // organize anything, so it gets the screen that explains that.
-        if preference == .automatic {
-            state = .unavailable(.cloudConsentNeeded)
+        // The screen goes up at launch, with nothing waiting behind it. If it
+        // went up mid-flow instead — a device that couldn't keep the answer
+        // from last time — the transcript is still here and the user has
+        // answered, so finish what they asked for.
+        if lastTranscript != nil {
+            startOrganize()
         }
-    }
-
-    /// The sheet went away without an answer — swiped rather than tapped.
-    /// Reads the same as "Not now": nothing is sent.
-    func cloudConsentDismissed() {
-        guard pendingPreference != nil else { return }
-        declineCloudConsent()
     }
 
     // MARK: - Lifecycle
@@ -342,62 +294,53 @@ final class CaptureViewModel {
         }
 
         lastTranscript = trimmed
-        startOrganize(preference: .automatic)
+        startOrganize()
     }
 
     // MARK: - Organizing
 
     /// Decides the route before anything runs, because two of its outcomes are
-    /// screens rather than organizers. Consent is the one this method handles
-    /// itself; the rest are failures `OrganizerRouter` throws, so they reach
-    /// the user through the same path as any other failed organize — logged
-    /// once, shown once.
-    private func startOrganize(preference: RoutingPolicy.Preference) {
+    /// screens rather than a tidy: the first-run screen, and the quota wall.
+    private func startOrganize() {
         guard let transcript = lastTranscript else { return }
 
-        let route = routing.route(preference: preference, onDeviceFailure: ModelAvailability.currentFailure())
-        if case .consentNeeded = route, !hasGrantedConsentThisSession {
-            pendingPreference = preference
-            isShowingCloudConsent = true
+        switch route() {
+        case .cloud:
+            break
+        case .consentNeeded:
+            isShowingFirstRun = true
+            return
+        case .blocked(let failure):
+            log.recordEvent(source: .app, message: "Organize blocked: \(failure)")
+            state = .unavailable(failure)
             return
         }
 
         organizeTask?.cancel()
         organizeTask = Task { [weak self] in
-            await self?.run(transcript, route: route)
+            await self?.run(transcript)
         }
     }
 
-    private func run(_ transcript: String, route: RoutingPolicy.Route) async {
+    private func route() -> RoutingPolicy.Route {
+        routing.route(consentGrantedThisSession: hasGrantedConsentThisSession)
+    }
+
+    private func run(_ transcript: String) async {
         // `reset()` between scheduling this task and its first line would
         // otherwise leave a spinner on a screen that's back at idle.
         guard !Task.isCancelled else { return }
 
-        let noteToKeep = previewedNote
         state = .organizing
 
-        let organizer = routing.organizer(for: route, source: .app, log: log)
-        switch await OrganizeRun(organizer: organizer, source: .app, log: log).run(transcript) {
+        switch await OrganizeRun(organizer: routing.organizer(), source: .app, log: log).run(transcript) {
         case .success(let outcome):
-            showPreview(outcome.note, cameFromOnDevice: route == .onDevice)
+            state = .preview(outcome.note)
         case .failure(let failure):
-            if let noteToKeep {
-                state = .premiumTidyFailed(note: noteToKeep, failure: failure)
-            } else {
-                state = .unavailable(failure)
-            }
+            state = .unavailable(failure)
         case nil:
             // Cancelled — `reset()` has already put the machine back to idle.
             break
         }
-    }
-
-    /// The premium tidy is only offered on top of a plain one. A note that
-    /// already came from the cloud has nothing better to be re-run through,
-    /// and offering it a count would read as though it hadn't been.
-    private func showPreview(_ note: OrganizedNote, cameFromOnDevice: Bool = true) {
-        previewedNote = note
-        premiumTidyOffer = cameFromOnDevice ? routing.premiumTidyOffer() : nil
-        state = .preview(note)
     }
 }

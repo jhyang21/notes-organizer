@@ -2,76 +2,59 @@ import Foundation
 import Testing
 @testable import NotesOrganizerKit
 
-/// One test per row of the plan's routing table, plus the two cases the table
-/// doesn't spell out: an unknown quota and a month that has rolled over.
+/// Three outcomes, two gates, and the order they run in. Everything the app
+/// promises about the free plan is decided here, so every combination that can
+/// reach it has a row.
 @Suite("RoutingPolicy")
 struct RoutingPolicyTests {
     private func route(
         isPro: Bool = false,
         cloudRemaining: Int? = 5,
-        onDeviceFailure: OrganizeFailure? = nil,
-        consentGranted: Bool = true,
-        preference: RoutingPolicy.Preference = .automatic
+        consentGranted: Bool = true
     ) -> RoutingPolicy.Route {
-        RoutingPolicy.route(
-            isPro: isPro,
-            cloudRemaining: cloudRemaining,
-            onDeviceFailure: onDeviceFailure,
-            consentGranted: consentGranted,
-            preference: preference
-        )
+        RoutingPolicy.route(isPro: isPro, cloudRemaining: cloudRemaining, consentGranted: consentGranted)
     }
 
-    // MARK: - The table
+    // MARK: - The consent gate
 
-    @Test("an explicit premium tidy goes to the cloud and never quietly downgrades")
-    func forceCloudNeverFallsBack() {
-        #expect(route(preference: .forceCloud) == .cloud(fallbackOnDevice: false))
-        // Even where an on-device tidy is available to fall back to.
-        #expect(route(isPro: true, preference: .forceCloud) == .cloud(fallbackOnDevice: false))
+    @Test("without consent there is no call to make, whatever else is true")
+    func consentComesFirst() {
+        #expect(route(consentGranted: false) == .consentNeeded)
+        #expect(route(isPro: true, consentGranted: false) == .consentNeeded)
+        // Ahead of the quota gate: nobody spends a tidy they haven't agreed to,
+        // and "you're out" is the wrong thing to tell someone who never started.
+        #expect(route(cloudRemaining: 0, consentGranted: false) == .consentNeeded)
+        #expect(route(cloudRemaining: nil, consentGranted: false) == .consentNeeded)
     }
 
-    @Test("Pro gets the cloud, with on-device as the safety net when it exists")
-    func proPrefersCloudWithFallback() {
-        #expect(route(isPro: true, cloudRemaining: nil) == .cloud(fallbackOnDevice: true))
-    }
+    // MARK: - The quota gate
 
-    @Test("Pro on hardware with no on-device model has nothing to fall back to")
-    func proWithoutOnDeviceSurfacesErrors() {
-        #expect(route(isPro: true, cloudRemaining: nil, onDeviceFailure: .deviceNotEligible) == .cloud(fallbackOnDevice: false))
-    }
-
-    @Test("a free user with an on-device model stays on it, unlimited")
-    func freeUsesOnDevice() {
-        #expect(route() == .onDevice)
-        // Quota and consent are beside the point when nothing leaves the phone.
-        #expect(route(cloudRemaining: 0, consentGranted: false) == .onDevice)
-    }
-
-    @Test("a free user with no on-device model spends quota, with no fallback")
-    func freeWithoutOnDeviceUsesCloud() {
-        #expect(route(cloudRemaining: 3, onDeviceFailure: .deviceNotEligible) == .cloud(fallbackOnDevice: false))
+    @Test("a free user with tidies left gets one")
+    func freeWithQuotaTidies() {
+        #expect(route() == .cloud)
+        #expect(route(cloudRemaining: 1) == .cloud)
     }
 
     @Test("a spent quota is a wall, not a slower route")
     func exhaustedQuotaBlocks() {
-        #expect(route(cloudRemaining: 0, onDeviceFailure: .deviceNotEligible) == .blocked(.cloudQuotaExhausted))
+        #expect(route(cloudRemaining: 0) == .blocked(.cloudQuotaExhausted))
+        // A count below zero is a server that counted past the limit; it means
+        // the same thing.
+        #expect(route(cloudRemaining: -1) == .blocked(.cloudQuotaExhausted))
     }
 
-    @Test("without consent there is no cloud call to make")
-    func withoutConsentAsksFirst() {
-        #expect(route(onDeviceFailure: .deviceNotEligible, consentGranted: false) == .consentNeeded)
-        // Consent comes before quota: nobody spends a tidy they haven't agreed to.
-        #expect(route(cloudRemaining: 0, onDeviceFailure: .deviceNotEligible, consentGranted: false) == .consentNeeded)
-        #expect(route(consentGranted: false, preference: .forceCloud) == .consentNeeded)
+    @Test("Pro is never walled, whatever the count says")
+    func proIsNeverBlocked() {
+        #expect(route(isPro: true, cloudRemaining: 0) == .cloud)
+        #expect(route(isPro: true, cloudRemaining: nil) == .cloud)
     }
 
-    // MARK: - What the table leaves open
-
-    @Test("an unknown quota is treated optimistically — the server owns the wall")
-    func unknownQuotaTriesTheCloud() {
-        #expect(route(cloudRemaining: nil, onDeviceFailure: .deviceNotEligible) == .cloud(fallbackOnDevice: false))
+    @Test("an unknown count is treated optimistically — the server owns the wall")
+    func unknownQuotaTries() {
+        #expect(route(cloudRemaining: nil) == .cloud)
     }
+
+    // MARK: - Where the count comes from
 
     @Test("last month's spent quota doesn't block this month")
     func rolledOverQuotaIsFresh() throws {
@@ -84,14 +67,6 @@ struct RoutingPolicyTests {
         let now = try #require(ISO8601DateFormatter().date(from: "2026-08-07T12:00:00Z"))
 
         #expect(store.cloudRemaining(now: now) == nil)
-        #expect(route(cloudRemaining: store.cloudRemaining(now: now), onDeviceFailure: .deviceNotEligible)
-            == .cloud(fallbackOnDevice: false))
-    }
-
-    @Test("an on-device model that's merely busy still counts as unavailable")
-    func anyOnDeviceFailureRoutesToCloud() {
-        let busy = OrganizeFailure.modelNotReady(reason: "busy")
-        #expect(route(onDeviceFailure: busy) == .cloud(fallbackOnDevice: false))
-        #expect(route(isPro: true, onDeviceFailure: busy) == .cloud(fallbackOnDevice: false))
+        #expect(route(cloudRemaining: store.cloudRemaining(now: now)) == .cloud)
     }
 }
