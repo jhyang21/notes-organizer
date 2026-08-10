@@ -124,9 +124,14 @@ public struct CloudOrganizer: NoteOrganizing {
     /// anyone reports, so whole seconds are plenty — and a nonsense value
     /// (a capture that never started, an infinity out of a broken asset)
     /// becomes zero rather than something unprintable.
+    ///
+    /// Capped as well as floored, because `Int(_:)` traps on a `Double` too
+    /// large to hold and "finite" is not the same as "small". A day is longer
+    /// than any capture, and the server rejects on its own limit long before
+    /// that.
     private static func wholeSeconds(_ seconds: Double) -> String {
         guard seconds.isFinite, seconds > 0 else { return "0" }
-        return String(Int(seconds.rounded()))
+        return String(Int(min(seconds.rounded(), 86_400)))
     }
 
     private func perform(_ request: URLRequest) async throws -> (Data, URLResponse) {

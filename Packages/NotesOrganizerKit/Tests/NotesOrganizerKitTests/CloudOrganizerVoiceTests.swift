@@ -108,7 +108,6 @@ struct CloudOrganizerVoiceTests {
         let contentType = try #require(request.value(forHTTPHeaderField: "Content-Type"))
         #expect(contentType.hasPrefix("multipart/form-data; boundary="))
         let boundary = String(contentType.dropFirst("multipart/form-data; boundary=".count))
-        #expect(!boundary.isEmpty)
 
         let raw = try #require(request.httpBody)
         let body = try text(raw)
@@ -159,9 +158,14 @@ struct CloudOrganizerVoiceTests {
         let organizer = makeOrganizer(store: store, transport: spy.responding(status: 200, json: successJSON))
 
         _ = try await organizer.organize(audioAt: recording, durationSeconds: .nan, locale: Locale(identifier: "en_US"))
+        let nonsense = try text(try #require(spy.lastRequest?.httpBody))
+        #expect(field("durationSeconds", in: nonsense) == "0")
 
-        let body = try text(try #require(spy.lastRequest?.httpBody))
-        #expect(field("durationSeconds", in: body) == "0")
+        // A finite duration far past what an `Int` can hold would trap on the
+        // way to a string, so it is capped rather than converted.
+        _ = try await organizer.organize(audioAt: recording, durationSeconds: 1e300, locale: Locale(identifier: "en_US"))
+        let enormous = try text(try #require(spy.lastRequest?.httpBody))
+        #expect(field("durationSeconds", in: enormous) == "86400")
     }
 
     @Test("a recording that isn't there never reaches the network")

@@ -95,7 +95,6 @@ struct MultipartFormBodyTests {
     @Test("a value the file couldn't hold as ASCII still goes out as UTF-8")
     func encodesValuesAsUTF8() throws {
         var body = MultipartFormBody(boundary: boundary)
-        body.appendField(name: "locale", value: "ko-KR")
         body.appendField(name: "note", value: "안녕")
 
         #expect(body.encoded().range(of: Data("안녕".utf8)) != nil)

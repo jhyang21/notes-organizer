@@ -72,8 +72,8 @@ struct MultipartFormBody {
 
     private static let crlf = Data("\r\n".utf8)
 
-    /// Hex and hyphens only, which every character a boundary is allowed to
-    /// hold, and long enough that no recording will ever contain it.
+    /// A UUID behind a fixed prefix: only characters a boundary is allowed to
+    /// hold, and long enough that no recording will contain it by accident.
     static func randomBoundary() -> String {
         "tidynote.\(UUID().uuidString)"
     }
