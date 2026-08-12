@@ -24,8 +24,7 @@ against an anonymous per-install identifier. TidyNote Pro lifts the cap.
 The app (`App/`) and the share extension (`ShareExtension/`) are two thin
 targets that both sit on top of `Packages/NotesOrganizerKit`, a Swift
 package holding everything they share: the note model, the cloud client,
-transcript chunking and merging, plain-text rendering,
-and the SwiftUI preview and save-actions views. Anything used by both
+plain-text rendering, and the SwiftUI preview and save-actions views. Anything used by both
 targets lives in the package rather than being duplicated. The cloud client
 sits behind a `NoteOrganizing` protocol and takes an injected `Transport`,
 so the unit test suite runs on CI without touching the network.
