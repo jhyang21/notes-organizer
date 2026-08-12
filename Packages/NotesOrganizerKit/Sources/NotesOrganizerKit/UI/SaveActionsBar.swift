@@ -1,18 +1,19 @@
 import SwiftUI
 import UIKit
 
-/// The three ways out of a finished note, in order of how well they work.
+/// The two ways out of a finished note.
 ///
-/// 1. **Save to Apple Notes** — shares a `.md` file. Notes imports Markdown
-///    files as real rich text, so headings and checkboxes survive. It costs
-///    one extra tap ("Import"), which is why the hint below exists.
+/// 1. **Save to Apple Notes** — shares the note as plain text. Notes' share
+///    row takes text straight into a new note, so the save is one step and
+///    it works. The bar used to share a `.md` file instead, on the theory
+///    that Notes imports Markdown as rich text; the device test on
+///    2026-08-11 showed that path saving nothing at all, and the extra
+///    Import screen went with it. Headings and checkboxes now arrive as
+///    text lines.
 /// 2. **Copy as text** — the clipboard, for pasting into anything.
-/// 3. **Share as text** — the share sheet with a plain string, for apps that
-///    would rather have text than a file.
 ///
 /// Uses `ShareLink` rather than wrapping `UIActivityViewController`: same
-/// sheet, no `UIViewControllerRepresentable`, and it stays extension-safe
-/// for M6.
+/// sheet, no `UIViewControllerRepresentable`, and it stays extension-safe.
 public struct SaveActionsBar: View {
     /// Which way out the user took. Recorded because once the share sheet
     /// takes over there is no other way to know which one they picked — and
@@ -20,7 +21,6 @@ public struct SaveActionsBar: View {
     public enum Action: String, Sendable {
         case saveToNotes
         case copyAsText
-        case shareAsText
     }
 
     private let note: OrganizedNote
@@ -28,14 +28,7 @@ public struct SaveActionsBar: View {
     private let source: DiagnosticsSource
     private let log: DiagnosticsLog
 
-    @State private var markdownURL: URL?
-    @State private var couldNotWriteFile = false
     @State private var showCopiedConfirmation = false
-
-    // The App Group suite, so seeing the hint in the app also counts as
-    // seeing it in the share extension.
-    @AppStorage("notesorganizer.hasSeenNotesImportHint", store: AppGroup.defaults)
-    private var hasSeenImportHint = false
 
     public init(note: OrganizedNote, source: DiagnosticsSource, log: DiagnosticsLog = .shared) {
         self.note = note
@@ -46,87 +39,41 @@ public struct SaveActionsBar: View {
 
     public var body: some View {
         VStack(spacing: 12) {
-            primaryAction
-            secondaryActions
-        }
-        .task {
-            await prepareMarkdownFile()
+            saveToNotes
+            copyAsTextButton
         }
     }
 
     // MARK: - Save to Apple Notes
 
-    @ViewBuilder
-    private var primaryAction: some View {
-        if let markdownURL {
-            ShareLink(item: markdownURL) {
-                Label("Save to Apple Notes", systemImage: "square.and.arrow.up")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .simultaneousGesture(TapGesture().onEnded {
-                hasSeenImportHint = true
-                record(.saveToNotes)
-            })
-
-            if !hasSeenImportHint {
-                Text("Tap Notes → Import to save a formatted note.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-        } else if couldNotWriteFile {
-            Text("Couldn't prepare a file to save. You can still copy or share the text below.")
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-        } else {
-            ProgressView()
-                .controlSize(.small)
+    private var saveToNotes: some View {
+        ShareLink(item: plainText, subject: Text(note.title)) {
+            Label("Save to Apple Notes", systemImage: "square.and.arrow.up")
+                .frame(maxWidth: .infinity)
         }
+        .buttonStyle(.borderedProminent)
+        .controlSize(.large)
+        .simultaneousGesture(TapGesture().onEnded {
+            record(.saveToNotes)
+        })
     }
 
-    // MARK: - Copy / share as text
+    // MARK: - Copy as text
 
-    private var secondaryActions: some View {
-        HStack(spacing: 12) {
-            Button {
-                copyAsText()
-            } label: {
-                Label(
-                    showCopiedConfirmation ? "Copied" : "Copy as text",
-                    systemImage: showCopiedConfirmation ? "checkmark" : "doc.on.doc"
-                )
-                .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-
-            ShareLink(item: plainText) {
-                Label("Share as text", systemImage: "text.alignleft")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-            .simultaneousGesture(TapGesture().onEnded {
-                record(.shareAsText)
-            })
+    private var copyAsTextButton: some View {
+        Button {
+            copyAsText()
+        } label: {
+            Label(
+                showCopiedConfirmation ? "Copied" : "Copy as text",
+                systemImage: showCopiedConfirmation ? "checkmark" : "doc.on.doc"
+            )
+            .frame(maxWidth: .infinity)
         }
+        .buttonStyle(.bordered)
     }
 
     // MARK: - Actions
-
-    /// Sweeping and writing are both synchronous `FileManager` work, so they
-    /// run off the main actor; only the resulting state comes back to it.
-    private func prepareMarkdownFile() async {
-        let note = self.note
-        let url = await Task.detached(priority: .userInitiated) { () -> URL? in
-            NoteShareItem.removeStaleFiles()
-            return try? NoteShareItem.makeMarkdownFile(for: note)
-        }.value
-
-        markdownURL = url
-        couldNotWriteFile = url == nil
-    }
 
     private func copyAsText() {
         UIPasteboard.general.string = plainText

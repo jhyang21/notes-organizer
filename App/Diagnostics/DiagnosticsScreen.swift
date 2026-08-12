@@ -2,16 +2,14 @@ import NotesOrganizerKit
 import SwiftUI
 
 /// A workbench, not a feature. It answers the questions a Windows machine
-/// can't: how long a real tidy took on this iPhone, what Apple Notes actually
-/// hands the share extension, and whether Notes' Markdown import keeps a
-/// note's structure. It ships in the beta on purpose — the answers only exist
-/// on Andrew's device.
+/// can't: how long a real tidy took on this iPhone, and what Apple Notes
+/// actually hands the share extension. It ships in the beta on purpose — the
+/// answers only exist on Andrew's device.
 struct DiagnosticsScreen: View {
     @State private var viewModel = DiagnosticsViewModel()
 
     var body: some View {
         List {
-            markdownImportSection
             sharePayloadSection
             timingsSection
             eventsSection
@@ -28,35 +26,10 @@ struct DiagnosticsScreen: View {
         }
         .task {
             viewModel.refresh()
-            viewModel.prepareMarkdownSample()
         }
     }
 
-    // MARK: - 1. Markdown import check
-
-    private var markdownImportSection: some View {
-        Section("Markdown import check") {
-            if let url = viewModel.markdownSampleURL {
-                ShareLink(item: url) {
-                    Label("Share sample note", systemImage: "square.and.arrow.up")
-                }
-                .simultaneousGesture(TapGesture().onEnded {
-                    viewModel.recordMarkdownShareTapped()
-                })
-                Text("Share to Notes, then check the imported note keeps its headings.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            } else if let error = viewModel.markdownSampleError {
-                Text(error)
-                    .font(.footnote)
-                    .foregroundStyle(.orange)
-            } else {
-                ProgressView()
-            }
-        }
-    }
-
-    // MARK: - 2. Share payloads
+    // MARK: - 1. Share payloads
 
     private var sharePayloadSection: some View {
         Section("Share payloads") {
@@ -85,7 +58,7 @@ struct DiagnosticsScreen: View {
         }
     }
 
-    // MARK: - 3. Organize timings
+    // MARK: - 2. Organize timings
 
     private var timingsSection: some View {
         Section("Organize timings") {
@@ -107,7 +80,7 @@ struct DiagnosticsScreen: View {
         }
     }
 
-    // MARK: - Events
+    // MARK: - 3. Events
 
     private var eventsSection: some View {
         Section("Events") {
