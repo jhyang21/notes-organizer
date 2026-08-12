@@ -3,8 +3,8 @@ import NotesOrganizerKit
 import Observation
 import UIKit
 
-/// State for the diagnostics screen: the Markdown import sample, and whatever
-/// the app and the share extension have written to the shared log.
+/// State for the diagnostics screen: whatever the app and the share
+/// extension have written to the shared log.
 ///
 /// It runs nothing itself. Every tidy costs a call now, and a workbench that
 /// spends a user's month on a sample would be a trap rather than a tool — the
@@ -12,9 +12,6 @@ import UIKit
 @MainActor
 @Observable
 final class DiagnosticsViewModel {
-    private(set) var markdownSampleURL: URL?
-    private(set) var markdownSampleError: String?
-
     private(set) var sharePayloads: [SharePayloadObservation] = []
     private(set) var organizeTimings: [OrganizeTiming] = []
     private(set) var events: [DiagnosticsEvent] = []
@@ -36,39 +33,6 @@ final class DiagnosticsViewModel {
     func clearLog() {
         log.clear()
         refresh()
-    }
-
-    // MARK: - Markdown import check
-
-    /// Writes the same kind of `.md` file the save path writes, so sharing it
-    /// to Notes answers the one question only a device can: does Notes'
-    /// Import keep the headings.
-    func prepareMarkdownSample() {
-        let note = OrganizedNote(
-            title: "Markdown Import Check",
-            sections: [
-                NoteSection(heading: "Headings", bullets: [
-                    "This line should sit under a bold heading called Headings",
-                    "A second bullet, to check list formatting",
-                ]),
-                NoteSection(heading: "Numbers and names", bullets: [
-                    "Marco quoted 11,200 for the cabinets on 12 March",
-                ]),
-            ],
-            actionItems: ["Check this note kept its structure"]
-        )
-
-        do {
-            markdownSampleURL = try NoteShareItem.makeMarkdownFile(for: note)
-            markdownSampleError = nil
-        } catch {
-            markdownSampleURL = nil
-            markdownSampleError = error.localizedDescription
-        }
-    }
-
-    func recordMarkdownShareTapped() {
-        log.recordEvent(source: .app, message: "Shared the Markdown import sample")
     }
 
     // MARK: - Device

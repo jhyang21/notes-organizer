@@ -13,8 +13,8 @@ Speak into the app, or share an Apple Note (or any text) into it from the
 share sheet. A recording is uploaded to the edge function and transcribed by
 Whisper; text shared in skips that step. Either way a GPT model turns the
 text into a title, sections with bullets, and action items, and the app
-shows a preview. Saving hands Apple Notes a Markdown file, which Notes
-imports as real rich text — headings, bullets, and checkboxes all survive.
+shows a preview. Saving shares the note as plain text: the share sheet, then
+Notes, then its Save button — headings and checkboxes arrive as text lines.
 
 The free plan allows five tidies a calendar month, counted on the server
 against an anonymous per-install identifier. TidyNote Pro lifts the cap.
@@ -24,8 +24,7 @@ against an anonymous per-install identifier. TidyNote Pro lifts the cap.
 The app (`App/`) and the share extension (`ShareExtension/`) are two thin
 targets that both sit on top of `Packages/NotesOrganizerKit`, a Swift
 package holding everything they share: the note model, the cloud client,
-transcript chunking and merging, Markdown/plain-text rendering,
-and the SwiftUI preview and save-actions views. Anything used by both
+plain-text rendering, and the SwiftUI preview and save-actions views. Anything used by both
 targets lives in the package rather than being duplicated. The cloud client
 sits behind a `NoteOrganizing` protocol and takes an injected `Transport`,
 so the unit test suite runs on CI without touching the network.
