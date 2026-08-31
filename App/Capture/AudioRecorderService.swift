@@ -50,7 +50,17 @@ final class AudioRecorderService: AudioRecording {
     private var levelContinuation: AsyncStream<Float>.Continuation?
     private var meterTask: Task<Void, Never>?
     private var interruptionObserver: NSObjectProtocol?
-    private(set) var isRecording = false
+    /// The length the recording had reached when it was last seen running,
+    /// sampled by the meter. `currentTime` reads zero once the recorder has
+    /// stopped — including when the system stopped it — so this is the only
+    /// place a lost session's length survives.
+    private var lastMeteredDuration: TimeInterval = 0
+
+    /// Asked of `AVAudioRecorder` rather than remembered, because the two
+    /// answers differ exactly when it matters: the system can take the session
+    /// away without saying so, and a flag set in `start()` would go on
+    /// insisting the microphone was live.
+    var isRecording: Bool { recorder?.isRecording ?? false }
 
     // MARK: - Permission
 
@@ -78,7 +88,9 @@ final class AudioRecorderService: AudioRecording {
     /// a normalized (0...1) level for metering, sampled ten times a second.
     /// The stream finishes when `stop()` is called.
     func start() throws -> AsyncStream<Float> {
-        guard !isRecording else { throw RecorderError.alreadyRecording }
+        // The object, not `isRecording`: a recorder whose session died is
+        // still one this hasn't been told to let go of.
+        guard recorder == nil else { throw RecorderError.alreadyRecording }
 
         let session = AVAudioSession.sharedInstance()
         // `.notifyOthersOnDeactivation` is a `setActive(options:)` flag, not a
@@ -108,7 +120,7 @@ final class AudioRecorderService: AudioRecording {
         }
 
         self.recorder = recorder
-        isRecording = true
+        lastMeteredDuration = 0
 
         let (levels, continuation) = AsyncStream<Float>.makeStream()
         levelContinuation = continuation
@@ -118,7 +130,12 @@ final class AudioRecorderService: AudioRecording {
         meterTask = Task { [weak self] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: Self.meterInterval)
-                guard !Task.isCancelled, let recorder = self?.recorder else { return }
+                guard !Task.isCancelled, let self, let recorder = self.recorder else { return }
+                // Only while it is genuinely running: a stopped recorder
+                // reports zero, which would erase the length it reached.
+                if recorder.isRecording {
+                    self.lastMeteredDuration = recorder.currentTime
+                }
                 recorder.updateMeters()
                 continuation.yield(Self.normalizedLevel(recorder.averagePower(forChannel: 0)))
             }
@@ -129,14 +146,18 @@ final class AudioRecorderService: AudioRecording {
     }
 
     /// Stops recording and hands back the finished file, or `nil` if there was
-    /// nothing running. The file stays on disk either way.
+    /// nothing to stop. The file stays on disk either way.
+    ///
+    /// Keyed on the recorder object rather than on `isRecording`, so a session
+    /// the system took away still yields its file: everything said before it
+    /// died is in there, and a partial note beats an error message.
     func stop() -> CapturedRecording? {
-        guard isRecording, let recorder else { return nil }
-        isRecording = false
+        guard let recorder else { return nil }
 
-        // `currentTime` reads zero once the recorder has stopped, so the
-        // length is taken while it still means something.
-        let recording = CapturedRecording(url: recorder.url, duration: recorder.currentTime)
+        // `currentTime` reads zero once the recorder has stopped — by this
+        // call or by the system — so the meter's last sighting stands in.
+        let duration = recorder.isRecording ? recorder.currentTime : lastMeteredDuration
+        let recording = CapturedRecording(url: recorder.url, duration: duration)
         recorder.stop()
         self.recorder = nil
 

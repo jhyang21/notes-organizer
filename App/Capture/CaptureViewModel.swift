@@ -64,7 +64,7 @@ final class CaptureViewModel {
     private let recorder: any AudioRecording
     private let silence: SilenceDetector.Configuration
     private let drafts: DraftStore
-    private let isAppActive: @MainActor () -> Bool
+    private let isAppInForeground: @MainActor () -> Bool
     private let clock = ContinuousClock()
 
     private var silenceDetector: SilenceDetector
@@ -88,8 +88,10 @@ final class CaptureViewModel {
     ///     reach the auto-stop without waiting ten seconds for it.
     ///   - drafts: the note the app is holding between launches. Injected so
     ///     a test writes to a suite of its own rather than the device's slot.
-    ///   - isAppActive: whether the user is looking at the app. Injected so a
-    ///     test can end a recording from the background without one.
+    ///   - isAppInForeground: whether the app is on screen at all. Only
+    ///     `.background` counts as gone — a notification banner pulled over
+    ///     the app makes it inactive, and the user is still watching. Injected
+    ///     so a test can end a recording from a locked phone it hasn't got.
     init(
         routing: OrganizeRouting = OrganizeRouting(),
         log: DiagnosticsLog = .shared,
@@ -97,7 +99,7 @@ final class CaptureViewModel {
         recorder: any AudioRecording = AudioRecorderService(),
         silence: SilenceDetector.Configuration = .default,
         drafts: DraftStore = .shared,
-        isAppActive: @escaping @MainActor () -> Bool = { UIApplication.shared.applicationState == .active }
+        isAppInForeground: @escaping @MainActor () -> Bool = { UIApplication.shared.applicationState != .background }
     ) {
         self.routing = routing
         self.log = log
@@ -105,7 +107,7 @@ final class CaptureViewModel {
         self.recorder = recorder
         self.silence = silence
         self.drafts = drafts
-        self.isAppActive = isAppActive
+        self.isAppInForeground = isAppInForeground
         self.silenceDetector = SilenceDetector(configuration: silence)
 
         self.recorder.onInterrupted = { [weak self] in
@@ -343,7 +345,7 @@ final class CaptureViewModel {
 
         recording = finished
 
-        guard isAppActive() else {
+        guard isAppInForeground() else {
             log.recordEvent(source: .app, message: "Recording finished in the background; holding it to send")
             state = .readyToSend(duration: finished.duration)
             return

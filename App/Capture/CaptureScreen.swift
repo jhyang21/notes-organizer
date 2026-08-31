@@ -76,8 +76,10 @@ struct CaptureScreen: View {
             viewModel.showFirstRunIfNeeded()
         }
         // A recording outlives the screen it started on — the audio background
-        // mode sees to that. `.inactive` is skipped: a notification banner or
-        // a swipe down from the top is not the app going away.
+        // mode sees to that. `.inactive` is skipped, and the view model's
+        // foreground test agrees: a notification banner pulled over the app is
+        // not the app going away, and a recording that ends under one should
+        // upload like any other.
         .onChange(of: scenePhase) { _, phase in
             switch phase {
             case .active: viewModel.appBecameActive()

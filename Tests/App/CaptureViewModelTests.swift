@@ -15,8 +15,13 @@ private final class MockRecorder: AudioRecording {
     /// What `stop()` hands back once a recording is running.
     var finished: CapturedRecording?
 
+    /// The live answer, as in the real service, where it comes from
+    /// `AVAudioRecorder` itself: a lost session turns it false on its own.
     private(set) var isRecording = false
     private(set) var startCount = 0
+    /// Started and not yet stopped — the mock's stand-in for the service's
+    /// recorder object, which outlives the session it was running.
+    private var isStarted = false
     private var levels: AsyncStream<Float>.Continuation?
 
     func requestPermission() async -> Bool { permissionGranted }
@@ -24,6 +29,7 @@ private final class MockRecorder: AudioRecording {
     func start() throws -> AsyncStream<Float> {
         if let startError { throw startError }
         startCount += 1
+        isStarted = true
         isRecording = true
         let (stream, continuation) = AsyncStream<Float>.makeStream()
         levels = continuation
@@ -31,7 +37,8 @@ private final class MockRecorder: AudioRecording {
     }
 
     func stop() -> CapturedRecording? {
-        guard isRecording else { return nil }
+        guard isStarted else { return nil }
+        isStarted = false
         isRecording = false
         levels?.finish()
         levels = nil
@@ -44,9 +51,21 @@ private final class MockRecorder: AudioRecording {
     }
 
     /// The session taken away underneath the app, with nothing said about it —
-    /// what the return-to-foreground check exists to catch.
+    /// what the return-to-foreground check exists to catch. The file outlives
+    /// it, which is why `stop()` still hands one back afterwards.
     func loseSession() {
         isRecording = false
+    }
+}
+
+/// Whether the app is on screen. A test that locks the phone partway through
+/// flips this rather than building a second view model.
+@MainActor
+private final class ForegroundFlag {
+    var isInForeground: Bool
+
+    init(_ isInForeground: Bool) {
+        self.isInForeground = isInForeground
     }
 }
 
@@ -92,16 +111,16 @@ struct CaptureViewModelTests {
     ///   - drafts: writes nowhere unless a test asks for a real slot. A test
     ///     that says nothing about drafts must not touch the one on the
     ///     machine running it.
-    ///   - appIsActive: whether the user is looking at the app. False is a
-    ///     locked phone. Stated rather than read from the test host, whose own
-    ///     state at any given moment is nothing this suite should depend on.
+    ///   - foreground: where the app is. Stated rather than read from the test
+    ///     host, whose own state at any given moment is nothing this suite
+    ///     should depend on.
     private func makeViewModel(
         recorder: MockRecorder,
         organizer: any NoteOrganizing & VoiceOrganizing,
         store: EntitlementStore,
         silence: SilenceDetector.Configuration = .default,
         drafts: DraftStore = DraftStore(defaults: nil),
-        appIsActive: Bool = true
+        foreground: ForegroundFlag = ForegroundFlag(true)
     ) -> CaptureViewModel {
         CaptureViewModel(
             routing: OrganizeRouting(store: store, cloud: organizer),
@@ -110,7 +129,7 @@ struct CaptureViewModelTests {
             recorder: recorder,
             silence: silence,
             drafts: drafts,
-            isAppActive: { appIsActive }
+            isAppInForeground: { foreground.isInForeground }
         )
     }
 
@@ -512,7 +531,7 @@ struct CaptureViewModelTests {
             organizer: organizer,
             store: makeStore(defaults),
             silence: .stopsOnFirstSilence,
-            appIsActive: false
+            foreground: ForegroundFlag(false)
         )
 
         viewModel.startCapture()
@@ -533,16 +552,22 @@ struct CaptureViewModelTests {
         let recorder = MockRecorder()
         recorder.finished = recording
         let organizer = MockOrganizer(result: note)
+        let foreground = ForegroundFlag(false)
         let viewModel = makeViewModel(
             recorder: recorder,
             organizer: organizer,
             store: makeStore(defaults),
-            appIsActive: false
+            foreground: foreground
         )
 
         viewModel.startCapture()
         try await waitUntil("the recording to start") { recorder.isRecording }
         viewModel.stopRecording()
+        #expect(viewModel.state == .readyToSend(duration: 9))
+
+        // The user comes back to the app and taps Send. Nothing sends itself.
+        foreground.isInForeground = true
+        viewModel.appBecameActive()
         #expect(viewModel.state == .readyToSend(duration: 9))
 
         viewModel.send()
@@ -551,10 +576,37 @@ struct CaptureViewModelTests {
         #expect(await organizer.receivedRecordings == [recording.url])
     }
 
-    @Test("coming back to a session that died ends the recording rather than the meter running on")
+    @Test("coming back to a session that died sends what it recorded before it died")
     func foregroundingFindsADeadSession() async throws {
         let defaults = try EphemeralDefaults()
+        // The partial file, which outlives the session that was writing it.
+        let recording = try makeRecordingFile(duration: 22)
         let recorder = MockRecorder()
+        recorder.finished = recording
+        let organizer = MockOrganizer(result: note)
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            organizer: organizer,
+            store: makeStore(defaults)
+        )
+
+        viewModel.startCapture()
+        try await waitUntil("the recording to start") { recorder.isRecording }
+        viewModel.appWentToBackground()
+        recorder.loseSession()
+        viewModel.appBecameActive()
+
+        // Not a failure and not a meter left turning: what the user said
+        // before the system took the microphone away is worth a note.
+        try await waitUntil("the note") { viewModel.state == .preview(note) }
+        #expect(await organizer.receivedRecordings == [recording.url])
+    }
+
+    @Test("a dead session with no file left to send is a failure, not a silent nothing")
+    func foregroundingFindsADeadSessionAndNoFile() async throws {
+        let defaults = try EphemeralDefaults()
+        let recorder = MockRecorder()
+        recorder.finished = nil
         let viewModel = makeViewModel(
             recorder: recorder,
             organizer: MockOrganizer(result: note),
@@ -563,7 +615,6 @@ struct CaptureViewModelTests {
 
         viewModel.startCapture()
         try await waitUntil("the recording to start") { recorder.isRecording }
-        viewModel.appWentToBackground()
         recorder.loseSession()
         viewModel.appBecameActive()
 
