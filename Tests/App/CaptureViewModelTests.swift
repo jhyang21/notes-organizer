@@ -80,12 +80,15 @@ struct CaptureViewModelTests {
         return CapturedRecording(url: url, duration: duration)
     }
 
-    /// - Parameter drafts: writes nowhere unless a test asks for a real slot.
-    ///   A test that says nothing about drafts must not touch the one on the
-    ///   machine running it.
+    /// - Parameters:
+    ///   - organizer: a `MockOrganizer` for a tidy that answers, a
+    ///     `SlowOrganizer` for one a test wants to catch mid-wait.
+    ///   - drafts: writes nowhere unless a test asks for a real slot. A test
+    ///     that says nothing about drafts must not touch the one on the
+    ///     machine running it.
     private func makeViewModel(
         recorder: MockRecorder,
-        organizer: MockOrganizer,
+        organizer: any NoteOrganizing & VoiceOrganizing,
         store: EntitlementStore,
         silence: SilenceDetector.Configuration = .default,
         drafts: DraftStore = DraftStore(defaults: nil)
@@ -97,21 +100,6 @@ struct CaptureViewModelTests {
             recorder: recorder,
             silence: silence,
             drafts: drafts
-        )
-    }
-
-    /// A view model whose tidy never comes back, so a test can catch it
-    /// mid-wait and decide what leaving that wait should do.
-    private func makeSlowViewModel(
-        recorder: MockRecorder,
-        defaults: EphemeralDefaults
-    ) -> CaptureViewModel {
-        CaptureViewModel(
-            routing: OrganizeRouting(store: makeStore(defaults), cloud: SlowOrganizer()),
-            log: makeLog(),
-            locale: Locale(identifier: "en_US"),
-            recorder: recorder,
-            drafts: DraftStore(defaults: nil)
         )
     }
 
@@ -426,7 +414,7 @@ struct CaptureViewModelTests {
         let recording = try makeRecordingFile()
         let recorder = MockRecorder()
         recorder.finished = recording
-        let viewModel = makeSlowViewModel(recorder: recorder, defaults: defaults)
+        let viewModel = makeViewModel(recorder: recorder, organizer: SlowOrganizer(), store: makeStore(defaults))
 
         viewModel.startCapture()
         try await waitUntil("the recording to start") { recorder.isRecording }
@@ -453,7 +441,7 @@ struct CaptureViewModelTests {
         defer { try? FileManager.default.removeItem(at: recording.url) }
         let recorder = MockRecorder()
         recorder.finished = recording
-        let viewModel = makeSlowViewModel(recorder: recorder, defaults: defaults)
+        let viewModel = makeViewModel(recorder: recorder, organizer: SlowOrganizer(), store: makeStore(defaults))
 
         viewModel.startCapture()
         try await waitUntil("the recording to start") { recorder.isRecording }

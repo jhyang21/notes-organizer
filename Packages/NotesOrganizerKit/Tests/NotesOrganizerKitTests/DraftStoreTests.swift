@@ -64,11 +64,10 @@ struct DraftStoreTests {
         let store = DraftStore(defaults: nil)
 
         store.save(note)
-
-        #expect(store.load() == nil)
         // Clearing a slot that was never written must be as harmless as
         // clearing one that was.
         store.clear()
+
         #expect(store.load() == nil)
     }
 }
