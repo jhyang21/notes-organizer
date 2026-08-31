@@ -154,8 +154,6 @@ final class AudioRecorderService: AudioRecording {
     func stop() -> CapturedRecording? {
         guard let recorder else { return nil }
 
-        // `currentTime` reads zero once the recorder has stopped — by this
-        // call or by the system — so the meter's last sighting stands in.
         let duration = recorder.isRecording ? recorder.currentTime : lastMeteredDuration
         let recording = CapturedRecording(url: recorder.url, duration: duration)
         recorder.stop()
