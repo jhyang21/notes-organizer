@@ -1,5 +1,6 @@
 import NotesOrganizerKit
 import SwiftUI
+import UIKit
 
 /// The single-screen capture flow: idle → recording → sending → preview.
 /// The preview, save actions, and unavailable states are all
@@ -8,6 +9,7 @@ import SwiftUI
 struct CaptureScreen: View {
     @State private var viewModel: CaptureViewModel
     @State private var isShowingPaywall = false
+    @Environment(\.openURL) private var openURL
 
     init(viewModel: CaptureViewModel = CaptureViewModel()) {
         _viewModel = State(initialValue: viewModel)
@@ -27,6 +29,8 @@ struct CaptureScreen: View {
                     sendingView(message: "Sending your recording…")
                 case .organizing:
                     sendingView(message: "Turning it into a note…")
+                case .readyToSend(let duration):
+                    readyToSendView(duration: duration)
                 case .preview(let note):
                     previewView(note: note)
                 case .failed(let failure):
@@ -65,6 +69,9 @@ struct CaptureScreen: View {
             FirstRunScreen(onContinue: { viewModel.acceptFirstRun() })
         }
         .onAppear {
+            // The draft first: it can only be there because a note was made,
+            // which means the first-run question was answered long ago.
+            viewModel.restoreDraftIfAvailable()
             viewModel.showFirstRunIfNeeded()
         }
     }
@@ -114,7 +121,47 @@ struct CaptureScreen: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
+
+            // Leaving the wait must not mean leaving the recording, so this
+            // is the only button here and it isn't the loud kind.
+            Button("Cancel") {
+                viewModel.cancelTidy()
+            }
+            .buttonStyle(.bordered)
         }
+    }
+
+    /// Where a cancelled tidy waits. Nothing was lost by cancelling — the
+    /// screen's job is to say so and offer the send again.
+    private func readyToSendView(duration: TimeInterval) -> some View {
+        VStack(spacing: 24) {
+            Text("Your recording is ready")
+                .font(.headline)
+
+            Text("Recording saved — \(durationLabel(duration)).")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+
+            VStack(spacing: 12) {
+                Button("Send") {
+                    viewModel.send()
+                }
+                .buttonStyle(.borderedProminent)
+
+                Button("Start Over") {
+                    viewModel.reset()
+                }
+                .buttonStyle(.bordered)
+            }
+        }
+    }
+
+    /// "7 seconds", "1 minute, 12 seconds" — the formatter handles the plural
+    /// and the units in whatever language the phone is in.
+    private func durationLabel(_ duration: TimeInterval) -> String {
+        Duration.seconds(duration.rounded())
+            .formatted(.units(allowed: [.minutes, .seconds], width: .wide))
     }
 
     private func recordingView(level: Float, elapsed: Duration) -> some View {
@@ -158,10 +205,22 @@ struct CaptureScreen: View {
             title: failure.title,
             message: failure.message
         ) {
-            Button("Try again") {
-                viewModel.reset()
+            // A refused microphone can't be un-refused from in here, so
+            // "Try again" would be a button that provably can't work. The
+            // only honest one goes where the answer can be changed.
+            if failure == .microphonePermissionDenied {
+                Button("Open Settings") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        openURL(url)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button("Try again") {
+                    viewModel.reset()
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
         }
     }
 }

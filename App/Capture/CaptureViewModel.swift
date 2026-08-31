@@ -31,6 +31,10 @@ final class CaptureViewModel {
         case recording(level: Float, elapsed: Duration)
         case uploading
         case organizing
+        /// The recording is on disk and waiting for the user to say go —
+        /// where a cancelled tidy lands. It carries the recording's length
+        /// because that is all the screen needs to say what is being held.
+        case readyToSend(duration: TimeInterval)
         case preview(OrganizedNote)
         case failed(CaptureFailure)
         case unavailable(OrganizeFailure)
@@ -58,6 +62,7 @@ final class CaptureViewModel {
     private let locale: Locale
     private let recorder: any AudioRecording
     private let silence: SilenceDetector.Configuration
+    private let drafts: DraftStore
     private let clock = ContinuousClock()
 
     private var silenceDetector: SilenceDetector
@@ -79,18 +84,22 @@ final class CaptureViewModel {
     ///     is — a CI simulator has neither one.
     ///   - silence: when a recording stops itself. Injected so a test can
     ///     reach the auto-stop without waiting ten seconds for it.
+    ///   - drafts: the note the app is holding between launches. Injected so
+    ///     a test writes to a suite of its own rather than the device's slot.
     init(
         routing: OrganizeRouting = OrganizeRouting(),
         log: DiagnosticsLog = .shared,
         locale: Locale = .current,
         recorder: any AudioRecording = AudioRecorderService(),
-        silence: SilenceDetector.Configuration = .default
+        silence: SilenceDetector.Configuration = .default,
+        drafts: DraftStore = .shared
     ) {
         self.routing = routing
         self.log = log
         self.locale = locale
         self.recorder = recorder
         self.silence = silence
+        self.drafts = drafts
         self.silenceDetector = SilenceDetector(configuration: silence)
 
         self.recorder.onInterrupted = { [weak self] in
@@ -104,9 +113,20 @@ final class CaptureViewModel {
     /// hasn't seen it. Told what TidyNote sends first, recorded second — the
     /// other order would be the app asking forgiveness.
     func showFirstRunIfNeeded() {
+        // A restored draft is proof the question was answered before that note
+        // was ever made — and it has the screen, so there is nothing to put
+        // this in front of.
+        guard case .idle = state else { return }
         if case .consentNeeded = route() {
             isShowingFirstRun = true
         }
+    }
+
+    /// Puts back the note the app was showing when it was last closed, so a
+    /// finished tidy outlives the process that made it.
+    func restoreDraftIfAvailable() {
+        guard case .idle = state, let draft = drafts.load() else { return }
+        state = .preview(draft)
     }
 
     func startCapture() {
@@ -140,6 +160,32 @@ final class CaptureViewModel {
         }
     }
 
+    /// "Cancel" during the wait. The tidy stops; the recording does not go
+    /// with it. Cancelling is a decision about the wait, not about what the
+    /// user said, so the file stays and "Send" picks it up again.
+    ///
+    /// The cancelled run unwinds afterwards. `OrganizeRun` turns cancellation
+    /// into "nothing to show", which is what keeps it from painting a failure
+    /// over this screen.
+    func cancelTidy() {
+        switch state {
+        case .uploading, .organizing:
+            guard let recording else { return }
+            organizeTask?.cancel()
+            organizeTask = nil
+            state = .readyToSend(duration: recording.duration)
+        default:
+            break
+        }
+    }
+
+    /// "Send" from the ready-to-send screen: the upload the cancel
+    /// interrupted, with the recording it kept.
+    func send() {
+        guard case .readyToSend = state else { return }
+        startOrganize()
+    }
+
     /// Re-reads the plan after the paywall closes. A subscription bought at the
     /// quota wall was bought to get past it, so the tidy that hit the wall runs
     /// again rather than making the user say it all over.
@@ -149,7 +195,8 @@ final class CaptureViewModel {
     }
 
     /// Abandons an in-progress or completed capture and returns to idle. The
-    /// recording goes with it: the user has said they're done with it.
+    /// recording goes with it, and so does the kept note: the user has said
+    /// they're done with both.
     func reset() {
         lifecycleTask?.cancel()
         lifecycleTask = nil
@@ -161,6 +208,7 @@ final class CaptureViewModel {
             delete(interrupted)
         }
         discardRecording()
+        drafts.clear()
         silenceDetector = SilenceDetector(configuration: silence)
         state = .idle
     }
@@ -318,11 +366,16 @@ final class CaptureViewModel {
         case .success(let outcome):
             // The note is here, so the recording has done its job.
             discardRecording()
+            // The note replaces the recording as the thing worth keeping: it
+            // cost a tidy, and it is not saved anywhere else until the user
+            // sends it to Apple Notes.
+            drafts.save(outcome.note)
             state = .preview(outcome.note)
         case .failure(let failure):
             state = .unavailable(failure)
         case nil:
-            // Cancelled — `reset()` has already put the machine back to idle.
+            // Cancelled — whoever cancelled has already moved the state on,
+            // to idle for `reset()` or to ready-to-send for `cancelTidy()`.
             break
         }
     }
