@@ -12,9 +12,11 @@ The backend shares the `relora-prod` Supabase project, with every object
 prefixed `tidynote_`. There are no accounts — installs are identified by an
 anonymous `tidy:<UUID>` — and RevenueCat carries subscription status.
 
-Full plan: `C:\Users\1025y\.claude\plans\use-this-product-one-pager-prancy-feigenbaum.md`
-(sections: Architecture, Repo layout, Milestones). Read it before starting
-any milestone.
+The architecture is the repo layout: `App/` (the app), `ShareExtension/`
+(the appex), `Packages/NotesOrganizerKit/` (everything both share),
+`supabase/functions/tidynote_organize/` (the edge function), `fastlane/` and
+`.github/workflows/` (the pipeline), `docs/appstore/` (listing copy and
+review notes).
 
 ## Invariants
 
@@ -46,6 +48,12 @@ xcodegen generate                 # regenerate NotesOrganizer.xcodeproj
 xcodebuild build \
   -project NotesOrganizer.xcodeproj -scheme NotesOrganizer \
   -destination 'generic/platform=iOS Simulator' \
+  CODE_SIGNING_ALLOWED=NO
+
+# App-layer tests (NotesOrganizerTests, hosted by the app):
+xcodebuild test \
+  -project NotesOrganizer.xcodeproj -scheme NotesOrganizer \
+  -destination 'platform=iOS Simulator,name=<discovered at runtime>' \
   CODE_SIGNING_ALLOWED=NO
 
 # NotesOrganizerKit unit tests run directly against the package —
@@ -87,9 +95,8 @@ hand.
 No `Gemfile.lock` is committed (see the Gemfile's own comment for why);
 CI runs a plain `bundle install`.
 
-## Milestones
+## History
 
-Milestones are tracked in the plan's Milestones section — M0 through M7 built
-the MVP, M8 onward moved it to the cloud and to the App Store.
-Current state and what's next live there, not here — check it before
-picking up work.
+M0 through M7 built the MVP, M8 onward moved it to the cloud and to the App
+Store. There is no milestone document: `git log` is the record. Read the
+recent commits before picking up work.

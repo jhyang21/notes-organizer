@@ -64,7 +64,7 @@ struct CaptureScreen: View {
         .fullScreenCover(isPresented: $viewModel.isShowingFirstRun) {
             FirstRunScreen(onContinue: { viewModel.acceptFirstRun() })
         }
-        .task {
+        .onAppear {
             viewModel.showFirstRunIfNeeded()
         }
     }

@@ -2,7 +2,7 @@ import SwiftUI
 
 /// Shows an organized note the way it will look once saved: title, section
 /// headings, bullets, and checkbox action items. Lives in the package so the
-/// share extension (M6) shows the user exactly the same preview the app does.
+/// share extension shows the user exactly the same preview the app does.
 ///
 /// Deliberately plain — system fonts, system spacing, no chrome. The note is
 /// the content; anything decorative here would be competing with it.

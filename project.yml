@@ -77,15 +77,46 @@ targets:
         INFOPLIST_FILE: ShareExtension/Info.plist
         GENERATE_INFOPLIST_FILE: NO
 
+  # App-layer tests. Hosted by the app, so the app's own launch path runs
+  # first — which is why `NotesOrganizerApp` skips RevenueCat under
+  # `XCTestConfigurationFilePath`.
+  NotesOrganizerTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: Tests/App
+      # An app extension is not an importable module, so the two files worth
+      # testing are compiled into the test bundle itself.
+      - path: ShareExtension/ShareViewModel.swift
+      - path: ShareExtension/SharedTextLoader.swift
+    dependencies:
+      - target: NotesOrganizer
+      - package: NotesOrganizerKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.immform.notesorganizer.tests
+        PRODUCT_NAME: NotesOrganizerTests
+        # Written out rather than left to the generator: the host is what
+        # makes `@testable import NotesOrganizer` resolve, and a silently
+        # host-less test bundle fails in a way that reads like a code error.
+        TEST_HOST: $(BUILT_PRODUCTS_DIR)/NotesOrganizer.app/NotesOrganizer
+        BUNDLE_LOADER: $(TEST_HOST)
+        # Nothing in a test bundle's plist is ours to own, and there is no
+        # signing to pin: CI runs with CODE_SIGNING_ALLOWED=NO.
+        GENERATE_INFOPLIST_FILE: YES
+
 schemes:
   NotesOrganizer:
     build:
       targets:
         NotesOrganizer: all
         ShareExtension: all
+        NotesOrganizerTests: [test]
     run:
       config: Debug
     test:
       config: Debug
+      targets:
+        - NotesOrganizerTests
     archive:
       config: Release
