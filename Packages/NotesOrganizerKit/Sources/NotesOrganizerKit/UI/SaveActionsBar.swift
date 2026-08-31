@@ -90,18 +90,14 @@ public struct SaveActionsBar: View {
     }
 }
 
-private let previewNote = OrganizedNote(
-    title: "Kitchen Renovation Notes",
-    sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4,200 for cabinets"])],
-    actionItems: ["Call the contractor back on Thursday"]
-)
-
-#Preview("App") {
-    SaveActionsBar(note: previewNote, source: .app)
-        .padding()
-}
-
-#Preview("Share extension") {
-    SaveActionsBar(note: previewNote, source: .shareExtension)
-        .padding()
+#Preview {
+    SaveActionsBar(
+        note: OrganizedNote(
+            title: "Kitchen Renovation Notes",
+            sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4,200 for cabinets"])],
+            actionItems: ["Call the contractor back on Thursday"]
+        ),
+        source: .app
+    )
+    .padding()
 }

@@ -53,7 +53,6 @@ final class EphemeralDefaults {
 func makeStore(
     _ defaults: EphemeralDefaults,
     consentGranted: Bool = true,
-    isPro: Bool = false,
     remaining: Int? = nil
 ) -> EntitlementStore {
     let store = EntitlementStore(defaults: defaults.defaults)
@@ -63,20 +62,18 @@ func makeStore(
             used: max(0, PlanState.freeMonthlyLimit - remaining),
             limit: PlanState.freeMonthlyLimit,
             month: currentMonthKey(),
-            isPro: isPro
+            isPro: false
         )
-    } else if isPro {
-        store.recordIsPro(true)
     }
     return store
 }
 
 /// The month label `EntitlementStore` counts against, worked out the way it
 /// does: UTC, so a machine in any time zone reads its own quota.
-func currentMonthKey(now: Date = Date()) -> String {
+func currentMonthKey() -> String {
     var calendar = Calendar(identifier: .gregorian)
     calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
-    let parts = calendar.dateComponents([.year, .month], from: now)
+    let parts = calendar.dateComponents([.year, .month], from: Date())
     return String(format: "%04d-%02d", parts.year ?? 0, parts.month ?? 0)
 }
 
