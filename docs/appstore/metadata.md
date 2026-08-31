@@ -111,6 +111,9 @@ TidyNote also appears in the iOS share sheet for text. Open the TidyNote app onc
 MICROPHONE PERMISSION
 Requested only when the user taps record. The recording IS uploaded: it goes over HTTPS to our endpoint and on to our provider, which transcribes it and organizes the result. Neither we nor the app keep it, and our provider holds it only for its own abuse monitoring, about 30 days. The privacy policy below says this in full.
 
+BACKGROUND AUDIO MODE
+The app declares the "audio" background mode for one reason: to keep a recording the user started running when they lock the phone or switch apps mid-sentence. Nothing records unless the user taps the microphone first, and the recording still stops itself after ten seconds of silence or five minutes, whichever comes first - so a recording left in a pocket ends on its own. There is no playback, no listening at launch, and no background activity of any kind once the recording ends. Nothing is uploaded while the app is in the background either: a recording that ends there is held on the device until the user comes back and taps Send. To see it: tap record, lock the phone, keep talking, then unlock - the recording is still going, and what was said while the phone was locked is in it.
+
 PRIVACY POLICY
 https://jhyang21.github.io/notes-organizer/privacy.html - it names our sub-processors and their retention periods explicitly, for audio and for text. The app's own copy avoids vendor names; the policy does not.
 ```

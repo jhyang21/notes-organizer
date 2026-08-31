@@ -18,6 +18,10 @@ protocol AudioRecording: AnyObject {
     /// Fired when the OS interrupts the session — a phone call, say.
     var onInterrupted: (() -> Void)? { get set }
 
+    /// Whether the microphone is running right now. Asked on return from the
+    /// background, where a session can die without notifying anyone.
+    var isRecording: Bool { get }
+
     func requestPermission() async -> Bool
     func start() throws -> AsyncStream<Float>
     func stop() -> CapturedRecording?

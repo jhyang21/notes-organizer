@@ -83,6 +83,13 @@ final class AudioRecorderService: AudioRecording {
         let session = AVAudioSession.sharedInstance()
         // `.notifyOthersOnDeactivation` is a `setActive(options:)` flag, not a
         // category option — it's applied in `stop()` below, not here.
+        //
+        // This category plus the `audio` background mode in Info.plist is the
+        // whole background contract: an active session keeps the process
+        // running, so recording and metering carry on when the user switches
+        // apps or locks the phone. The ten-second silence stop and the
+        // five-minute cap apply there too — a pocketed recording ends on its
+        // own, out of sight.
         try session.setCategory(.playAndRecord, mode: .measurement, options: [.defaultToSpeaker])
         try session.setActive(true)
 

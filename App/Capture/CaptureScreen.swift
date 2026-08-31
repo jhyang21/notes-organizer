@@ -10,6 +10,7 @@ struct CaptureScreen: View {
     @State private var viewModel: CaptureViewModel
     @State private var isShowingPaywall = false
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     init(viewModel: CaptureViewModel = CaptureViewModel()) {
         _viewModel = State(initialValue: viewModel)
@@ -73,6 +74,16 @@ struct CaptureScreen: View {
             // which means the first-run question was answered long ago.
             viewModel.restoreDraftIfAvailable()
             viewModel.showFirstRunIfNeeded()
+        }
+        // A recording outlives the screen it started on — the audio background
+        // mode sees to that. `.inactive` is skipped: a notification banner or
+        // a swipe down from the top is not the app going away.
+        .onChange(of: scenePhase) { _, phase in
+            switch phase {
+            case .active: viewModel.appBecameActive()
+            case .background: viewModel.appWentToBackground()
+            default: break
+            }
         }
     }
 
