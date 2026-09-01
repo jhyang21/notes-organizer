@@ -30,9 +30,8 @@ public struct SaveActionsBar: View {
 
     @State private var showCopiedConfirmation = false
     // `.bounce` fires on every change of its trigger, and `showCopiedConfirmation`
-    // changes twice per copy — once true, once back to false when the label
-    // reverts. Counting copies instead gives the bounce a value that only
-    // moves forward, so the second edge is silent.
+    // changes twice per copy. The trigger has to move only forward, and only
+    // when motion is allowed — so this counts the copies that get to bounce.
     @State private var copyCount = 0
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -78,7 +77,7 @@ public struct SaveActionsBar: View {
                 Text(showCopiedConfirmation ? "Copied" : "Copy as text")
             } icon: {
                 Image(systemName: showCopiedConfirmation ? "checkmark" : "doc.on.doc")
-                    .symbolEffect(.bounce, value: reduceMotion ? 0 : copyCount)
+                    .symbolEffect(.bounce, value: copyCount)
             }
             .frame(maxWidth: .infinity)
         }
@@ -91,7 +90,7 @@ public struct SaveActionsBar: View {
         UIPasteboard.general.string = plainText
         record(.copyAsText)
         showCopiedConfirmation = true
-        copyCount += 1
+        if !reduceMotion { copyCount += 1 }
         Task {
             try? await Task.sleep(for: .seconds(2))
             showCopiedConfirmation = false

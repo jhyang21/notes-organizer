@@ -81,9 +81,8 @@ targets:
         PROVISIONING_PROFILE_SPECIFIER: match AppStore com.immform.notesorganizer.share
         INFOPLIST_FILE: ShareExtension/Info.plist
         GENERATE_INFOPLIST_FILE: NO
-        # So the "Save to Apple Notes…" button in Kit views reads terracotta
-        # here too, not the system-blue default — the same asset catalog as
-        # the app, named the same way.
+        # Compiling the catalog isn't enough — without this the appex still
+        # renders the system-blue default, and the shared Kit views with it.
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
 
   # App-layer tests. Hosted by the app, so the app's own launch path runs
