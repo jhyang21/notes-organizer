@@ -1,4 +1,3 @@
-import NotesOrganizerKit
 import RevenueCat
 import RevenueCatUI
 import SwiftUI
@@ -8,19 +7,20 @@ import SwiftUI
 /// re-cut without shipping a build; this file only says what happens after.
 ///
 /// What happens after is the same for a purchase and a successful restore:
-/// write the entitlement to the App Group — the extension has no SDK and only
-/// learns about Pro this way — and get out of the user's way.
+/// hand the answer to `PurchasesController`, which is where the entitlement is
+/// written, and get out of the user's way.
 struct PaywallScreen: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(PurchasesController.self) private var purchases
 
     var body: some View {
         PaywallView(displayCloseButton: true)
             .onPurchaseCompleted { customerInfo in
-                EntitlementStore.shared.recordIsPro(customerInfo.isPro)
+                purchases.recordEntitlement(isPro: customerInfo.isPro)
                 dismiss()
             }
             .onRestoreCompleted { customerInfo in
-                EntitlementStore.shared.recordIsPro(customerInfo.isPro)
+                purchases.recordEntitlement(isPro: customerInfo.isPro)
                 // A restore that finds nothing leaves the sheet up: the user
                 // came here to subscribe, and closing on them would read as
                 // though it had worked.

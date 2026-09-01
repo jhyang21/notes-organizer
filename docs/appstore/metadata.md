@@ -102,8 +102,11 @@ HOW TO TEST A SUBSCRIPTION IN SANDBOX
 2. Tap "Go Pro" to open the paywall. Buy either the monthly or the annual product with a sandbox Apple Account. The 7-day free trial applies.
 3. Settings should now read "TidyNote Pro" with "Tidies are unlimited."
 4. Go back, record a short voice note (or share text in, see below), and let it finish.
-5. "Restore Purchases" in Settings re-applies the entitlement.
-To exercise the free path instead, use a fresh install without purchasing: Settings reads "Tidies left this month: N", and that count drops by one with each tidy.
+5. "Restore Purchases" in Settings re-applies the entitlement. "Manage Subscription" opens the system subscription sheet in place; it does not leave the app.
+To exercise the free path instead, use a fresh install without purchasing: Settings reads "Tidies left this month: N", the capture screen says the same count under the microphone, and both drop by one with each tidy.
+
+DIAGNOSTICS IS HIDDEN
+Settings ends with a version line ("TidyNote 1.0.0 (N)"). Tapping it five times reveals a Diagnostics row - an internal log of what the app did on this device, kept for TestFlight testers to read back to us. It stays on the device, is never transmitted, and is not part of the product. Nothing else is behind it.
 
 SHARE EXTENSION
 TidyNote also appears in the iOS share sheet for text. Open the TidyNote app once before testing it - the first run shows a one-time screen that explains what gets sent and asks you to agree, and the extension only works after that. Then: open Apple Notes (or any app with text), share the note or selected text, choose TidyNote from the share sheet, and the extension shows the organized version. It never writes back to the note you shared: to keep the result, tap "Save to Apple Notes", which opens the share sheet again and saves the organized text as a new note. The extension has no purchase UI - StoreKit purchases are not viable inside a share extension - so if the free quota is exhausted there it says "Open TidyNote to go Pro" instead.
