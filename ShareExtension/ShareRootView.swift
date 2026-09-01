@@ -50,6 +50,13 @@ struct ShareRootView: View {
         .task {
             await model.start(with: items)
         }
+        // A VoiceOver user working through the share sheet can't see the
+        // preview arrive on its own.
+        .onChange(of: model.state) { _, state in
+            if case .preview = state {
+                AccessibilityNotification.Announcement("Note ready.").post()
+            }
+        }
     }
 
     /// The two states with a call still running behind them.
@@ -104,6 +111,9 @@ struct ShareRootView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
+        // The spinner and its caption are one wait, not two things to swipe
+        // past separately.
+        .accessibilityElement(children: .combine)
     }
 
     private func previewView(note: OrganizedNote) -> some View {

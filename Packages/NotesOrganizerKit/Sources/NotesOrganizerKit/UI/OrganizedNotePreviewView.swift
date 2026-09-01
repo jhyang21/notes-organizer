@@ -19,6 +19,7 @@ public struct OrganizedNotePreviewView: View {
                 Text(note.title.isEmpty ? "Untitled note" : note.title)
                     .font(.title2.bold())
                     .foregroundStyle(note.title.isEmpty ? .secondary : .primary)
+                    .accessibilityAddTraits(.isHeader)
 
                 ForEach(Array(note.sections.enumerated()), id: \.offset) { _, section in
                     sectionView(section)
@@ -40,6 +41,7 @@ public struct OrganizedNotePreviewView: View {
             if !section.heading.isEmpty {
                 Text(section.heading)
                     .font(.headline)
+                    .accessibilityAddTraits(.isHeader)
             }
             ForEach(Array(section.bullets.enumerated()), id: \.offset) { _, bullet in
                 bulletRow(marker: "•", text: bullet)
@@ -51,6 +53,7 @@ public struct OrganizedNotePreviewView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Action Items")
                 .font(.headline)
+                .accessibilityAddTraits(.isHeader)
             ForEach(Array(note.actionItems.enumerated()), id: \.offset) { _, item in
                 bulletRow(marker: "☐", text: item)
             }

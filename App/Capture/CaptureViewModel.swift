@@ -41,6 +41,16 @@ final class CaptureViewModel {
         case unavailable(OrganizeFailure)
     }
 
+    /// Why the last recording ended. A silence auto-stop and a manual tap
+    /// land on the same states, so the screen needs this to say something
+    /// more useful than "it stopped" to VoiceOver.
+    enum StopReason: Equatable {
+        case manual
+        case autoStopSilence
+        case autoStopHardCap
+        case interrupted
+    }
+
     /// A recording shorter than this is someone's stray tap, not something
     /// they said. Nothing is uploaded and nothing is kept.
     private static let minimumDuration: TimeInterval = 1
@@ -53,6 +63,10 @@ final class CaptureViewModel {
     private static let uploadCaption = Duration.seconds(3)
 
     private(set) var state: State = .idle
+    /// Set the moment a recording ends, alongside the state transition that
+    /// leaves `.recording` — read by the screen to word its VoiceOver
+    /// announcement. `nil` until the first recording ends.
+    private(set) var lastStopReason: StopReason?
 
     /// The first-run screen, which every install sees once before it can
     /// record anything. Settable so SwiftUI can bind to it.
@@ -111,7 +125,7 @@ final class CaptureViewModel {
         self.silenceDetector = SilenceDetector(configuration: silence)
 
         self.recorder.onInterrupted = { [weak self] in
-            self?.finishRecording()
+            self?.finishRecording(reason: .interrupted)
         }
     }
 
@@ -148,7 +162,7 @@ final class CaptureViewModel {
     /// User-initiated stop. Auto-stop (silence/hard cap) and interruption
     /// both route through the same `finishRecording()`.
     func stopRecording() {
-        finishRecording()
+        finishRecording(reason: .manual)
     }
 
     /// "Try again" on a failure screen. Sends the recording we still have
@@ -243,7 +257,7 @@ final class CaptureViewModel {
         log.recordEvent(source: .app, message: "Foregrounded while recording")
         guard !recorder.isRecording else { return }
         log.recordEvent(source: .app, message: "Recording session died in the background")
-        finishRecording()
+        finishRecording(reason: .interrupted)
     }
 
     // MARK: - Consent
@@ -309,8 +323,10 @@ final class CaptureViewModel {
                 switch self.silenceDetector.evaluate(elapsed: elapsed, level: level) {
                 case .continue:
                     break
-                case .autoStopSilence, .hardCapReached:
-                    self.finishRecording()
+                case .autoStopSilence:
+                    self.finishRecording(reason: .autoStopSilence)
+                case .hardCapReached:
+                    self.finishRecording(reason: .autoStopHardCap)
                 }
             }
         }
@@ -326,8 +342,9 @@ final class CaptureViewModel {
     /// Idempotent — safe to call from more than one signal racing to end the
     /// same recording, because it runs start to finish without suspending and
     /// leaves the state somewhere other than `.recording` however it goes.
-    private func finishRecording() {
+    private func finishRecording(reason: StopReason) {
         guard case .recording = state else { return }
+        lastStopReason = reason
 
         levelTask?.cancel()
         levelTask = nil
