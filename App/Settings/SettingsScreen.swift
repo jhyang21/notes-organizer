@@ -189,11 +189,7 @@ struct SettingsScreen: View {
     }
 
     private func restore() async {
-        present(await purchases.restore())
-    }
-
-    private func present(_ outcome: PurchasesController.RestoreOutcome) {
-        restoreOutcome = outcome
+        restoreOutcome = await purchases.restore()
         isShowingRestoreOutcome = true
     }
 }

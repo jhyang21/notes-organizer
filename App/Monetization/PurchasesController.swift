@@ -6,10 +6,8 @@ import Observation
 /// what it says, restore on request — and write what it learns to the App
 /// Group, which is the only way the share extension ever hears about Pro.
 ///
-/// Every `recordIsPro` in the app happens here. Before, the paywall, the
-/// restore button and a detached mirroring task each wrote the same field from
-/// three places, and nothing owned the task. One owner means one answer, and a
-/// stream that stops when this object does.
+/// Every `recordIsPro` in the app happens here: one owner means one answer,
+/// and a stream that stops when this object does.
 ///
 /// Nothing here decides whether a tidy is allowed. The server re-checks
 /// entitlement on every call; what the store learns from this file only drives
@@ -74,7 +72,7 @@ final class PurchasesController {
 
         service.configure(appUserID: store.appUserID())
 
-        entitlementStream.replace(with: Task { [weak self] in
+        entitlementStream.set(Task { [weak self] in
             guard let updates = self?.service.entitlementUpdates() else { return }
             for await isPro in updates {
                 guard let self else { break }
@@ -115,13 +113,8 @@ private final class CancellableTask: @unchecked Sendable {
     private let lock = NSLock()
     private var task: Task<Void, Never>?
 
-    func replace(with task: Task<Void, Never>) {
-        let previous = lock.withLock {
-            let previous = self.task
-            self.task = task
-            return previous
-        }
-        previous?.cancel()
+    func set(_ task: Task<Void, Never>) {
+        lock.withLock { self.task = task }
     }
 
     func cancel() {
