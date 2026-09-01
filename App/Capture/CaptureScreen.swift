@@ -122,9 +122,10 @@ struct CaptureScreen: View {
     /// `.impact`, leaving it for `.uploading` or `.readyToSend` is the "you
     /// said stop and it heard you" `.success` — auto-stop and the hard cap
     /// both route through the same transition, so they get the same feedback.
-    /// A screen that arrives already showing a note (a restored draft) gets
-    /// the same `.success` a freshly organized one does; there is nothing
-    /// user-visible to tell them apart from.
+    /// A note arriving from the organizer is `.success` too — except a note
+    /// that was already sitting there before the user did anything, which is
+    /// what a cold launch onto a restored draft is. A haptic is feedback for
+    /// something just done; restoring one isn't that.
     private func captureFeedback(
         from old: CaptureViewModel.State,
         to new: CaptureViewModel.State
@@ -141,6 +142,11 @@ struct CaptureScreen: View {
         case (_, .failed), (_, .unavailable):
             return .error
         case (.preview, .preview):
+            return nil
+        // A cold launch landing straight on a restored draft is the only way
+        // to reach .preview from .idle — restoring is not something the user
+        // just did, so it gets no haptic.
+        case (.idle, .preview):
             return nil
         case (_, .preview):
             return .success
