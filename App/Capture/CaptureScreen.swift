@@ -128,9 +128,12 @@ struct CaptureScreen: View {
     private func scrollableCenteredContent<Content: View>(
         @ViewBuilder content: () -> Content
     ) -> some View {
-        GeometryReader { proxy in
+        // Resolved before the GeometryReader closure, which escapes and so
+        // can't call the non-escaping builder itself.
+        let resolved = content()
+        return GeometryReader { proxy in
             ScrollView {
-                content()
+                resolved
                     .frame(maxWidth: .infinity, minHeight: proxy.size.height)
             }
         }
