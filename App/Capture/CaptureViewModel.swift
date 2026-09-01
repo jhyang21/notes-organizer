@@ -1,6 +1,7 @@
 import Foundation
 import NotesOrganizerKit
 import Observation
+import UIKit
 
 /// Reasons a capture can't produce a note that are the app's own — the
 /// microphone, and the recording itself. Everything from the upload onwards is
@@ -63,6 +64,7 @@ final class CaptureViewModel {
     private let recorder: any AudioRecording
     private let silence: SilenceDetector.Configuration
     private let drafts: DraftStore
+    private let isAppInForeground: @MainActor () -> Bool
     private let clock = ContinuousClock()
 
     private var silenceDetector: SilenceDetector
@@ -86,13 +88,18 @@ final class CaptureViewModel {
     ///     reach the auto-stop without waiting ten seconds for it.
     ///   - drafts: the note the app is holding between launches. Injected so
     ///     a test writes to a suite of its own rather than the device's slot.
+    ///   - isAppInForeground: whether the app is on screen at all. Only
+    ///     `.background` counts as gone — a notification banner pulled over
+    ///     the app makes it inactive, and the user is still watching. Injected
+    ///     so a test can end a recording from a locked phone it hasn't got.
     init(
         routing: OrganizeRouting = OrganizeRouting(),
         log: DiagnosticsLog = .shared,
         locale: Locale = .current,
         recorder: any AudioRecording = AudioRecorderService(),
         silence: SilenceDetector.Configuration = .default,
-        drafts: DraftStore = .shared
+        drafts: DraftStore = .shared,
+        isAppInForeground: @escaping @MainActor () -> Bool = { UIApplication.shared.applicationState != .background }
     ) {
         self.routing = routing
         self.log = log
@@ -100,6 +107,7 @@ final class CaptureViewModel {
         self.recorder = recorder
         self.silence = silence
         self.drafts = drafts
+        self.isAppInForeground = isAppInForeground
         self.silenceDetector = SilenceDetector(configuration: silence)
 
         self.recorder.onInterrupted = { [weak self] in
@@ -213,6 +221,31 @@ final class CaptureViewModel {
         state = .idle
     }
 
+    // MARK: - Coming and going
+
+    /// The app went behind the lock screen or another app. Recording carries
+    /// on there; this only says so in the log, so a capture the user couldn't
+    /// watch still leaves a trail on their device.
+    func appWentToBackground() {
+        guard case .recording = state else { return }
+        log.recordEvent(source: .app, message: "Backgrounded while recording")
+    }
+
+    /// The app is back on screen. An audio session can be taken away without
+    /// an interruption notification ever arriving, which would leave the meter
+    /// turning over a microphone that stopped listening minutes ago. If that
+    /// happened, end the recording here rather than let the screen lie.
+    ///
+    /// A recording that ended in the background is sitting in `.readyToSend`,
+    /// and it stays there: the user reads what is waiting and taps Send.
+    func appBecameActive() {
+        guard case .recording = state else { return }
+        log.recordEvent(source: .app, message: "Foregrounded while recording")
+        guard !recorder.isRecording else { return }
+        log.recordEvent(source: .app, message: "Recording session died in the background")
+        finishRecording()
+    }
+
     // MARK: - Consent
 
     /// The only button on the first-run screen. Kept in the App Group so the
@@ -284,10 +317,15 @@ final class CaptureViewModel {
     }
 
     /// Stops recording (from a manual tap, auto-stop, an interruption, or the
-    /// hard cap) and moves on to the upload. Idempotent — safe to call from
-    /// more than one signal racing to end the same recording, because it runs
-    /// start to finish without suspending and leaves the state somewhere other
-    /// than `.recording` however it goes.
+    /// hard cap) and moves on to the upload — unless the app is behind the
+    /// lock screen or another app, in which case the recording waits. The
+    /// system suspends an app it can't see, so an upload started here would
+    /// fail for a reason that has nothing to do with the user. The file is
+    /// kept instead, and they send it when they come back.
+    ///
+    /// Idempotent — safe to call from more than one signal racing to end the
+    /// same recording, because it runs start to finish without suspending and
+    /// leaves the state somewhere other than `.recording` however it goes.
     private func finishRecording() {
         guard case .recording = state else { return }
 
@@ -306,6 +344,13 @@ final class CaptureViewModel {
         }
 
         recording = finished
+
+        guard isAppInForeground() else {
+            log.recordEvent(source: .app, message: "Recording finished in the background; holding it to send")
+            state = .readyToSend(duration: finished.duration)
+            return
+        }
+
         startOrganize()
     }
 

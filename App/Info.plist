@@ -37,6 +37,12 @@
          validation (90474) demands all four orientations. -->
     <key>UIRequiresFullScreen</key>
     <true/>
+    <!-- Solely so a recording the user started keeps running when the phone
+         locks or they switch apps. Nothing records without that tap. -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>audio</string>
+    </array>
     <key>NSMicrophoneUsageDescription</key>
     <string>TidyNote records your voice, then sends the recording securely to its servers to be transcribed and organized into a note. Recordings aren't kept.</string>
     <key>ITSAppUsesNonExemptEncryption</key>

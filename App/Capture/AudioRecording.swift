@@ -18,6 +18,13 @@ protocol AudioRecording: AnyObject {
     /// Fired when the OS interrupts the session — a phone call, say.
     var onInterrupted: (() -> Void)? { get set }
 
+    /// Whether the microphone is running right now — the live answer, not a
+    /// flag set when it started. Asked on return from the background, where a
+    /// session can die without notifying anyone, so an implementation that
+    /// remembers rather than checks would never report the one case this is
+    /// here for. `stop()` must still yield the file after a false reading.
+    var isRecording: Bool { get }
+
     func requestPermission() async -> Bool
     func start() throws -> AsyncStream<Float>
     func stop() -> CapturedRecording?
