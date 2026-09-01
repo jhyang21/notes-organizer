@@ -32,7 +32,9 @@ final class RevenueCatPurchaseService: PurchaseService {
     private static let apiKey = "appl_TOxAKdSxotqcJNPNvdynaNmLIfn"
 
     /// The entitlement's lookup key in the TidyNote RevenueCat project.
-    static let proEntitlement = "pro"
+    /// `nonisolated` because the `CustomerInfo` extension below reads it from
+    /// outside the main actor; an immutable String is safe from anywhere.
+    nonisolated static let proEntitlement = "pro"
 
     var isConfigured: Bool { Purchases.isConfigured }
 
