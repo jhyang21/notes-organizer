@@ -27,6 +27,9 @@
     },
     "TidyNote" : {
 
+    },
+    "TidyNote can't be opened from here." : {
+
     }
   },
   "version" : "1.0"

@@ -19,9 +19,8 @@ struct CaptureScreen: View {
     // caption below it at the biggest accessibility sizes.
     @ScaledMetric(relativeTo: .largeTitle) private var micIconSize: CGFloat = 72
 
-    /// Read through a computed property rather than stored: a `View`'s stored
-    /// properties are initialized outside the main actor, and the router lives
-    /// on it.
+    /// The one router the whole process shares, read here rather than injected:
+    /// an App Intent has no view to inject it into.
     @MainActor private var router: QuickCaptureRouter { .shared }
 
     init(viewModel: CaptureViewModel = CaptureViewModel()) {
