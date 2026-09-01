@@ -14,6 +14,11 @@ struct CaptureScreen: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    // The mic button is the one oversized symbol on the idle screen; scaling
+    // it with the largest system text style keeps it from crowding out the
+    // caption below it at the biggest accessibility sizes.
+    @ScaledMetric(relativeTo: .largeTitle) private var micIconSize: CGFloat = 72
+
     init(viewModel: CaptureViewModel = CaptureViewModel()) {
         _viewModel = State(initialValue: viewModel)
     }
@@ -23,22 +28,30 @@ struct CaptureScreen: View {
             VStack(spacing: 24) {
                 switch viewModel.state {
                 case .idle:
-                    idleView
+                    scrollableCenteredContent { idleView }
                 case .requestingPermissions:
-                    statusView(message: "Requesting microphone access…")
+                    scrollableCenteredContent {
+                        statusView(message: "Requesting microphone access…")
+                    }
                 case .recording(let level, let elapsed):
-                    recordingView(level: level, elapsed: elapsed)
+                    scrollableCenteredContent { recordingView(level: level, elapsed: elapsed) }
                 case .uploading:
-                    sendingView(message: "Sending your recording…")
+                    scrollableCenteredContent { sendingView(message: "Sending your recording…") }
                 case .organizing:
-                    sendingView(message: "Turning it into a note…")
+                    scrollableCenteredContent { sendingView(message: "Turning it into a note…") }
                 case .readyToSend(let duration):
-                    readyToSendView(duration: duration)
+                    scrollableCenteredContent { readyToSendView(duration: duration) }
                 case .preview(let note):
+                    // Not wrapped like the rest: the note already scrolls in
+                    // its own space below a save bar that stays put, and a
+                    // second scroll container around the two would only cost
+                    // that pinning.
                     previewView(note: note)
                 case .failed(let failure):
+                    // NoticeView scrolls itself, so this needs no wrapper.
                     captureFailureView(failure: failure)
                 case .unavailable(let failure):
+                    // Same as above — UnavailableView is a NoticeView.
                     UnavailableView(
                         failure: failure,
                         onRetry: { viewModel.retry() },
@@ -97,6 +110,70 @@ struct CaptureScreen: View {
                 plan.refresh()
             }
         }
+        // A VoiceOver user watching something else can't see the screen
+        // change on its own — the moments worth a haptic above are worth
+        // saying out loud too.
+        .onChange(of: viewModel.state) { old, new in
+            if let announcement = accessibilityAnnouncement(from: old, to: new) {
+                AccessibilityNotification.Announcement(announcement).post()
+            }
+        }
+    }
+
+    // MARK: - Dynamic Type
+
+    /// Sized to at least the available space, so short content still centers
+    /// the way it always has, and content that outgrows the screen at
+    /// accessibility text sizes scrolls instead of clipping off the bottom.
+    private func scrollableCenteredContent<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        // Resolved before the GeometryReader closure, which escapes and so
+        // can't call the non-escaping builder itself.
+        let resolved = content()
+        return GeometryReader { proxy in
+            ScrollView {
+                resolved
+                    .frame(maxWidth: .infinity, minHeight: proxy.size.height)
+            }
+        }
+    }
+
+    // MARK: - VoiceOver announcements
+
+    private func accessibilityAnnouncement(
+        from old: CaptureViewModel.State,
+        to new: CaptureViewModel.State
+    ) -> String? {
+        switch (old, new) {
+        case (.recording, .recording):
+            return nil
+        case (_, .recording):
+            return "Recording started."
+        case (_, .failed(let failure)):
+            return failure.title
+        case (.recording, .uploading), (.recording, .readyToSend):
+            return stoppedAnnouncement
+        case (.preview, .preview):
+            return nil
+        // A restored draft landing straight on `.preview` from `.idle` is a
+        // cold launch, not a tidy the user just watched finish.
+        case (.idle, .preview):
+            return nil
+        case (_, .preview):
+            return "Note ready."
+        default:
+            return nil
+        }
+    }
+
+    private var stoppedAnnouncement: String {
+        switch viewModel.lastStopReason {
+        case .autoStopSilence:
+            return "Recording stopped automatically after a pause."
+        case .manual, .autoStopHardCap, .interrupted, nil:
+            return "Recording stopped."
+        }
     }
 
     // MARK: - Haptics
@@ -144,7 +221,7 @@ struct CaptureScreen: View {
                 viewModel.startCapture()
             } label: {
                 Image(systemName: "mic.circle.fill")
-                    .font(.system(size: 72))
+                    .font(.system(size: micIconSize))
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Start recording")
@@ -178,6 +255,9 @@ struct CaptureScreen: View {
                 .font(.headline)
                 .foregroundStyle(.secondary)
         }
+        // The spinner and its caption are one wait, not two things to swipe
+        // past separately.
+        .accessibilityElement(children: .combine)
     }
 
     /// Both halves of the wait, which look the same to the user and read
@@ -185,17 +265,22 @@ struct CaptureScreen: View {
     /// recording spends most of the wait on a server we can't see into.
     private func sendingView(message: String) -> some View {
         VStack(spacing: 16) {
-            ProgressView()
-            Text(message)
-                .font(.headline)
-                .foregroundStyle(.secondary)
-            Text("Long recordings can take up to a minute.")
-                .font(.caption)
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
+            VStack(spacing: 16) {
+                ProgressView()
+                Text(message)
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                Text("Long recordings can take up to a minute.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .accessibilityElement(children: .combine)
 
             // Leaving the wait must not mean leaving the recording, so this
-            // is the only button here and it isn't the loud kind.
+            // is the only button here and it isn't the loud kind. Kept
+            // outside the combined element above so it stays its own
+            // reachable, activatable stop for VoiceOver.
             Button("Cancel") {
                 viewModel.cancelTidy()
             }
@@ -209,10 +294,11 @@ struct CaptureScreen: View {
         VStack(spacing: 24) {
             Text("Your recording is ready")
                 .font(.headline)
+                .accessibilityAddTraits(.isHeader)
 
             Text("Recording saved — \(durationLabel(duration)).")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
             VStack(spacing: 12) {
@@ -247,7 +333,7 @@ struct CaptureScreen: View {
 
             Text("Recording stops automatically after a pause, or after 5 minutes.")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
             Button {
@@ -267,10 +353,11 @@ struct CaptureScreen: View {
 
             SaveActionsBar(note: note, source: .app)
 
-            Button("New note") {
+            Button("New Note") {
                 viewModel.reset()
             }
-            .font(.subheadline)
+            .buttonStyle(.bordered)
+            .frame(minHeight: 44)
         }
     }
 

@@ -77,6 +77,11 @@ private extension SilenceDetector.Configuration {
         silenceWindow: .zero,
         minimumRecordingDuration: .zero
     )
+
+    /// Stops on the first sample regardless of activity — the hard-cap path,
+    /// not the silence one. `evaluate` checks the cap before anything else,
+    /// so a zero cap wins even on a sample that also looks like speech.
+    static let hardCapReachedImmediately = SilenceDetector.Configuration(hardCap: .zero)
 }
 
 private extension CaptureViewModel.State {
@@ -216,9 +221,11 @@ struct CaptureViewModelTests {
 
         viewModel.startCapture()
         try await waitUntil("the recording to start") { recorder.isRecording }
+        #expect(viewModel.lastStopReason == nil)
         viewModel.stopRecording()
 
         try await waitUntil("the note") { viewModel.state == .preview(note) }
+        #expect(viewModel.lastStopReason == .manual)
         #expect(await organizer.receivedRecordings == [recording.url])
         // The note is here, so the recording has done its job.
         #expect(FileManager.default.fileExists(atPath: recording.url.path) == false)
@@ -244,7 +251,28 @@ struct CaptureViewModelTests {
 
         try await waitUntil("the note") { viewModel.state == .preview(note) }
         #expect(recorder.isRecording == false)
+        #expect(viewModel.lastStopReason == .autoStopSilence)
         #expect(await organizer.receivedRecordings == [recording.url])
+    }
+
+    @Test("the hard cap stops the recording with its own reason, not silence's")
+    func hardCapSetsTheReason() async throws {
+        let defaults = try EphemeralDefaults()
+        let recorder = MockRecorder()
+        recorder.finished = try makeRecordingFile()
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults),
+            silence: .hardCapReachedImmediately
+        )
+
+        viewModel.startCapture()
+        try await waitUntil("the recording to start") { recorder.isRecording }
+        recorder.emit(0.5)
+
+        try await waitUntil("the note") { viewModel.state == .preview(note) }
+        #expect(viewModel.lastStopReason == .autoStopHardCap)
     }
 
     @Test("an interruption ends the recording the same way a tap does")
@@ -264,6 +292,7 @@ struct CaptureViewModelTests {
         recorder.onInterrupted?()
 
         try await waitUntil("the note") { viewModel.state == .preview(note) }
+        #expect(viewModel.lastStopReason == .interrupted)
     }
 
     @Test("a recording that didn't save is a failure, not an empty upload")

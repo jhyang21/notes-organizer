@@ -10,6 +10,10 @@ public struct NoticeView<Actions: View>: View {
     private let message: String
     private let actions: Actions
 
+    // The one large fixed size in this view; everything else is already
+    // system type, which scales on its own.
+    @ScaledMetric(relativeTo: .largeTitle) private var symbolSize: CGFloat = 48
+
     public init(
         symbol: String,
         title: String,
@@ -23,21 +27,35 @@ public struct NoticeView<Actions: View>: View {
     }
 
     public var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: symbol)
-                .font(.system(size: 48))
-                .foregroundStyle(.secondary)
+        // Sized to at least the available space: short content still
+        // centers the way it always has, and a dead end taller than the
+        // screen at accessibility text sizes — the quota wall and the
+        // paywall hint especially — scrolls instead of clipping.
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: 16) {
+                    VStack(spacing: 16) {
+                        Image(systemName: symbol)
+                            .font(.system(size: symbolSize))
+                            .foregroundStyle(.secondary)
 
-            Text(title)
-                .font(.headline)
-                .multilineTextAlignment(.center)
+                        Text(title)
+                            .font(.headline)
+                            .multilineTextAlignment(.center)
 
-            Text(message)
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
+                        Text(message)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    // One VoiceOver stop for "what happened and why," not
+                    // three — the actions below stay their own elements.
+                    .accessibilityElement(children: .combine)
 
-            actions
+                    actions
+                }
+                .frame(maxWidth: .infinity, minHeight: proxy.size.height)
+            }
         }
     }
 }

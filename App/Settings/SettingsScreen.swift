@@ -115,6 +115,7 @@ struct SettingsScreen: View {
                     if purchases.isRestoring {
                         Spacer()
                         ProgressView()
+                            .accessibilityLabel("Restoring purchases")
                     }
                 }
             }

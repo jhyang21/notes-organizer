@@ -9,6 +9,10 @@ struct RecordingIndicatorView: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    @ScaledMetric(relativeTo: .largeTitle) private var circleSize: CGFloat = 120
+    @ScaledMetric(relativeTo: .largeTitle) private var containerSize: CGFloat = 160
+    @ScaledMetric(relativeTo: .largeTitle) private var waveformSize: CGFloat = 40
+
     // Reduce Motion turns the pulse off rather than just unanimating it — a
     // circle that still jumps to a new size on every meter sample is motion
     // by another name.
@@ -22,21 +26,29 @@ struct RecordingIndicatorView: View {
             ZStack {
                 Circle()
                     .fill(Color.accentColor.opacity(0.15))
-                    .frame(width: 120, height: 120)
+                    .frame(width: circleSize, height: circleSize)
                     .scaleEffect(scale)
                     .animation(.easeOut(duration: 0.12), value: level)
 
                 Image(systemName: "waveform")
-                    .font(.system(size: 40, weight: .medium))
+                    .font(.system(size: waveformSize, weight: .medium))
                     .foregroundStyle(Color.accentColor)
                     .symbolEffect(.variableColor.iterative, isActive: !reduceMotion)
             }
-            .frame(width: 160, height: 160)
+            .frame(width: containerSize, height: containerSize)
 
             Text(elapsedLabel)
                 .font(.title3.monospacedDigit())
                 .foregroundStyle(.secondary)
         }
+        // One element for the whole indicator: a VoiceOver user doesn't need
+        // to visit the pulsing circle and the clock separately, and the
+        // pulse fires many times a second, so it needs to stay out of the
+        // rotor entirely rather than compete with everything else on screen.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Recording")
+        .accessibilityValue(elapsed.formatted(.units(allowed: [.minutes, .seconds], width: .wide)))
+        .accessibilityAddTraits(.updatesFrequently)
     }
 
     private var elapsedLabel: String {

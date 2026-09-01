@@ -91,6 +91,7 @@ public struct SaveActionsBar: View {
         record(.copyAsText)
         showCopiedConfirmation = true
         if !reduceMotion { copyCount += 1 }
+        AccessibilityNotification.Announcement("Copied").post()
         Task {
             try? await Task.sleep(for: .seconds(2))
             showCopiedConfirmation = false
