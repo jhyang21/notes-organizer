@@ -80,18 +80,26 @@ struct CaptureViewModelTests {
         return CapturedRecording(url: url, duration: duration)
     }
 
+    /// - Parameters:
+    ///   - organizer: a `MockOrganizer` for a tidy that answers, a
+    ///     `SlowOrganizer` for one a test wants to catch mid-wait.
+    ///   - drafts: writes nowhere unless a test asks for a real slot. A test
+    ///     that says nothing about drafts must not touch the one on the
+    ///     machine running it.
     private func makeViewModel(
         recorder: MockRecorder,
-        organizer: MockOrganizer,
+        organizer: any NoteOrganizing & VoiceOrganizing,
         store: EntitlementStore,
-        silence: SilenceDetector.Configuration = .default
+        silence: SilenceDetector.Configuration = .default,
+        drafts: DraftStore = DraftStore(defaults: nil)
     ) -> CaptureViewModel {
         CaptureViewModel(
             routing: OrganizeRouting(store: store, cloud: organizer),
             log: makeLog(),
             locale: Locale(identifier: "en_US"),
             recorder: recorder,
-            silence: silence
+            silence: silence,
+            drafts: drafts
         )
     }
 
@@ -406,12 +414,7 @@ struct CaptureViewModelTests {
         let recording = try makeRecordingFile()
         let recorder = MockRecorder()
         recorder.finished = recording
-        let viewModel = CaptureViewModel(
-            routing: OrganizeRouting(store: makeStore(defaults), cloud: SlowOrganizer()),
-            log: makeLog(),
-            locale: Locale(identifier: "en_US"),
-            recorder: recorder
-        )
+        let viewModel = makeViewModel(recorder: recorder, organizer: SlowOrganizer(), store: makeStore(defaults))
 
         viewModel.startCapture()
         try await waitUntil("the recording to start") { recorder.isRecording }
@@ -427,5 +430,157 @@ struct CaptureViewModelTests {
         // failure over a screen that is already back at the start.
         try await Task.sleep(for: .milliseconds(50))
         #expect(viewModel.state == .idle)
+    }
+
+    // MARK: - Leaving the wait
+
+    @Test("cancelling the wait gives up the tidy, not the recording")
+    func cancelKeepsTheRecording() async throws {
+        let defaults = try EphemeralDefaults()
+        let recording = try makeRecordingFile(duration: 12)
+        defer { try? FileManager.default.removeItem(at: recording.url) }
+        let recorder = MockRecorder()
+        recorder.finished = recording
+        let viewModel = makeViewModel(recorder: recorder, organizer: SlowOrganizer(), store: makeStore(defaults))
+
+        viewModel.startCapture()
+        try await waitUntil("the recording to start") { recorder.isRecording }
+        viewModel.stopRecording()
+        try await waitUntil("the upload") { viewModel.state == .uploading }
+
+        viewModel.cancelTidy()
+
+        #expect(viewModel.state == .readyToSend(duration: 12))
+        #expect(FileManager.default.fileExists(atPath: recording.url.path))
+
+        // The cancelled run unwinds afterwards. It must not paint a failure
+        // over a screen that is waiting to be sent.
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(viewModel.state == .readyToSend(duration: 12))
+    }
+
+    @Test("sending after a cancel uploads the recording that was kept")
+    func sendReusesTheKeptRecording() async throws {
+        let defaults = try EphemeralDefaults()
+        let recording = try makeRecordingFile(duration: 8)
+        let recorder = MockRecorder()
+        recorder.finished = recording
+        let organizer = MockOrganizer(result: note)
+        let viewModel = makeViewModel(recorder: recorder, organizer: organizer, store: makeStore(defaults))
+
+        viewModel.startCapture()
+        try await waitUntil("the recording to start") { recorder.isRecording }
+        // Both calls run to completion before the organize task gets a turn,
+        // so the cancel reliably lands on a tidy that hasn't started yet.
+        viewModel.stopRecording()
+        viewModel.cancelTidy()
+
+        #expect(viewModel.state == .readyToSend(duration: 8))
+        #expect(await organizer.receivedRecordings.isEmpty)
+
+        viewModel.send()
+        try await waitUntil("the note") { viewModel.state == .preview(note) }
+
+        // The file the recorder made, not a new one: cancelling cost the
+        // wait, not what the user said.
+        #expect(await organizer.receivedRecordings == [recording.url])
+    }
+
+    // MARK: - Drafts
+
+    @Test("a finished note is kept, so closing the app doesn't spend a tidy for nothing")
+    func previewKeepsTheNote() async throws {
+        let defaults = try EphemeralDefaults()
+        let drafts = DraftStore(defaults: defaults.defaults)
+        let recorder = MockRecorder()
+        recorder.finished = try makeRecordingFile()
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults),
+            drafts: drafts
+        )
+
+        viewModel.startCapture()
+        try await waitUntil("the recording to start") { recorder.isRecording }
+        viewModel.stopRecording()
+        try await waitUntil("the note") { viewModel.state == .preview(note) }
+
+        #expect(drafts.load() == note)
+    }
+
+    @Test("starting a new note lets the kept one go")
+    func resetClearsTheDraft() async throws {
+        let defaults = try EphemeralDefaults()
+        let drafts = DraftStore(defaults: defaults.defaults)
+        let recorder = MockRecorder()
+        recorder.finished = try makeRecordingFile()
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults),
+            drafts: drafts
+        )
+
+        viewModel.startCapture()
+        try await waitUntil("the recording to start") { recorder.isRecording }
+        viewModel.stopRecording()
+        try await waitUntil("the note") { viewModel.state == .preview(note) }
+
+        viewModel.reset()
+
+        #expect(drafts.load() == nil)
+    }
+
+    @Test("a kept note is back on screen at the next launch")
+    func draftIsRestored() throws {
+        let defaults = try EphemeralDefaults()
+        let drafts = DraftStore(defaults: defaults.defaults)
+        drafts.save(note)
+
+        let viewModel = makeViewModel(
+            recorder: MockRecorder(),
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults),
+            drafts: drafts
+        )
+        viewModel.restoreDraftIfAvailable()
+
+        #expect(viewModel.state == .preview(note))
+    }
+
+    @Test("nothing kept means nothing to put back")
+    func noDraftLeavesTheScreenAtIdle() throws {
+        let defaults = try EphemeralDefaults()
+        let viewModel = makeViewModel(
+            recorder: MockRecorder(),
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults),
+            drafts: DraftStore(defaults: defaults.defaults)
+        )
+        viewModel.restoreDraftIfAvailable()
+
+        #expect(viewModel.state == .idle)
+    }
+
+    @Test("a restored draft doesn't reopen a question it already answers")
+    func restoredDraftSkipsFirstRun() throws {
+        let defaults = try EphemeralDefaults()
+        let drafts = DraftStore(defaults: defaults.defaults)
+        drafts.save(note)
+
+        // Consent unwritten, as it would be on a device where the App Group
+        // write went nowhere. The note is proof enough that it was granted.
+        let viewModel = makeViewModel(
+            recorder: MockRecorder(),
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults, consentGranted: false),
+            drafts: drafts
+        )
+        viewModel.restoreDraftIfAvailable()
+        viewModel.showFirstRunIfNeeded()
+
+        #expect(viewModel.state == .preview(note))
+        #expect(viewModel.isShowingFirstRun == false)
     }
 }

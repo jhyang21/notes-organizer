@@ -6,8 +6,10 @@ import SwiftUI
 /// `UnavailableView` doing the work, so a note looks the same here as in the
 /// app.
 ///
-/// Cancel and Done are always on screen. Whatever else happens, the user can
-/// close the extension.
+/// Cancel is always on screen: whatever else happens, the user can leave.
+/// Done waits until there is something to be done with — it dismisses the
+/// extension, and dismissing it mid-tidy would throw away work in flight
+/// without saying so.
 struct ShareRootView: View {
     @State private var model: ShareViewModel
 
@@ -40,12 +42,21 @@ struct ShareRootView: View {
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         Button("Done", action: onDone)
+                            .disabled(isWorkInFlight)
                     }
                 }
         }
         .animation(.default, value: model.state)
         .task {
             await model.start(with: items)
+        }
+    }
+
+    /// The two states with a call still running behind them.
+    private var isWorkInFlight: Bool {
+        switch model.state {
+        case .loading, .organizing: true
+        default: false
         }
     }
 
