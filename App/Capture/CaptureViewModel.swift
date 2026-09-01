@@ -350,7 +350,7 @@ final class CaptureViewModel {
         levelTask = nil
 
         guard let finished = recorder.stop() else {
-            state = .failed(.captureFailed("The recording didn't save. Try again."))
+            state = .failed(.captureFailed(String(localized: "The recording didn't save. Try again.")))
             return
         }
 

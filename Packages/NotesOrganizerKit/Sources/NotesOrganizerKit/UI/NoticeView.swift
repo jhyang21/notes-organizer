@@ -68,9 +68,9 @@ public extension NoticeView where Actions == EmptyView {
 
 #Preview("No action") {
     NoticeView(
-        symbol: "doc.text",
-        title: "There's no text here",
-        message: "Select the text you want organized, then share it again."
+        symbol: "doc.slash",
+        title: "Nothing to tidy",
+        message: "There's no text to organize. Select some text and share it again."
     )
 }
 
@@ -80,7 +80,7 @@ public extension NoticeView where Actions == EmptyView {
         title: "Recording failed",
         message: "Something interrupted the microphone."
     ) {
-        Button("Try again") {}
+        Button("Try Again") {}
             .buttonStyle(.borderedProminent)
     }
 }

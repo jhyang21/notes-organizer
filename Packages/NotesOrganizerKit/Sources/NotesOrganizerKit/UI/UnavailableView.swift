@@ -55,10 +55,10 @@ public struct UnavailableView: View {
     private var actions: some View {
         switch failure {
         case .networkUnavailable, .cloudUnavailable:
-            retryButton(title: "Try again")
+            retryButton(title: "Try Again")
 
         case .emptyTranscript, .audioTooLarge:
-            retryButton(title: "Record again")
+            retryButton(title: "Record Again")
 
         case .cloudQuotaExhausted:
             if inShareExtension {
@@ -75,7 +75,7 @@ public struct UnavailableView: View {
                 // The app asks on first launch, so this shouldn't be reachable
                 // in it. Retrying recomputes the route, which puts the
                 // first-run screen up rather than leaving a dead end.
-                retryButton(title: "Try again")
+                retryButton(title: "Try Again")
             }
         }
     }
@@ -98,7 +98,9 @@ public struct UnavailableView: View {
 
     private var symbolName: String {
         switch failure {
-        case .emptyTranscript: "mic.slash"
+        // Shares a symbol with `CaptureFailure.emptyRecording` — both read as
+        // "nothing there to work with".
+        case .emptyTranscript: "waveform.slash"
         case .cloudQuotaExhausted: "sparkles"
         case .cloudConsentNeeded: "hand.raised"
         case .networkUnavailable: "wifi.slash"
@@ -109,7 +111,7 @@ public struct UnavailableView: View {
 
     private var title: String {
         switch failure {
-        case .emptyTranscript: "We didn't catch anything"
+        case .emptyTranscript: "Nothing to tidy"
         case .cloudQuotaExhausted: "You've used this month's tidies"
         case .cloudConsentNeeded: "TidyNote isn't set up yet"
         case .networkUnavailable: "You're offline"
@@ -121,9 +123,9 @@ public struct UnavailableView: View {
     private var message: String {
         switch failure {
         case .emptyTranscript:
-            "There wasn't enough there to organize. Record again and speak for a few seconds."
+            "We didn't catch enough to organize. Speak for a few seconds and try again."
         case .cloudQuotaExhausted:
-            "They come back next month, or go unlimited with TidyNote Pro. Nothing was lost — your text is still here."
+            "They come back next month, or go unlimited with TidyNote Pro."
         case .cloudConsentNeeded:
             "TidyNote says what it sends and asks once, in the app, before anything leaves your iPhone."
         case .networkUnavailable:

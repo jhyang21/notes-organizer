@@ -149,7 +149,7 @@ struct CaptureScreen: View {
         case (.recording, .recording):
             return nil
         case (_, .recording):
-            return "Recording started."
+            return String(localized: "Recording started.")
         case (_, .failed(let failure)):
             return failure.title
         case (.recording, .uploading), (.recording, .readyToSend):
@@ -161,7 +161,7 @@ struct CaptureScreen: View {
         case (.idle, .preview):
             return nil
         case (_, .preview):
-            return "Note ready."
+            return String(localized: "Note ready.")
         default:
             return nil
         }
@@ -170,9 +170,9 @@ struct CaptureScreen: View {
     private var stoppedAnnouncement: String {
         switch viewModel.lastStopReason {
         case .autoStopSilence:
-            return "Recording stopped automatically after a pause."
+            return String(localized: "Recording stopped automatically after 10 seconds of silence.")
         case .manual, .autoStopHardCap, .interrupted, nil:
-            return "Recording stopped."
+            return String(localized: "Recording stopped.")
         }
     }
 
@@ -235,20 +235,14 @@ struct CaptureScreen: View {
             // fresh install hasn't heard a count from the server yet; both
             // read as nothing rather than as a guess.
             if let remaining = plan.remaining {
-                Group {
-                    if remaining == 1 {
-                        Text("1 tidy left this month")
-                    } else {
-                        Text("\(remaining) tidies left this month")
-                    }
-                }
-                .font(.footnote)
-                .foregroundStyle(.secondary)
+                Text("^[\(remaining) tidies](inflect: true) left this month")
+                    .font(.footnote)
+                    .foregroundStyle(.secondary)
             }
         }
     }
 
-    private func statusView(message: String) -> some View {
+    private func statusView(message: LocalizedStringKey) -> some View {
         VStack(spacing: 16) {
             ProgressView()
             Text(message)
@@ -263,14 +257,14 @@ struct CaptureScreen: View {
     /// Both halves of the wait, which look the same to the user and read
     /// differently on purpose: the caption is the honest part, since a long
     /// recording spends most of the wait on a server we can't see into.
-    private func sendingView(message: String) -> some View {
+    private func sendingView(message: LocalizedStringKey) -> some View {
         VStack(spacing: 16) {
             VStack(spacing: 16) {
                 ProgressView()
                 Text(message)
                     .font(.headline)
                     .foregroundStyle(.secondary)
-                Text("Long recordings can take up to a minute.")
+                Text("Long recordings can take a couple of minutes.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -331,7 +325,7 @@ struct CaptureScreen: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
-            Text("Recording stops automatically after a pause, or after 5 minutes.")
+            Text("Recording stops automatically after 10 seconds of silence, or after 5 minutes.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -363,12 +357,12 @@ struct CaptureScreen: View {
 
     private func captureFailureView(failure: CaptureFailure) -> some View {
         NoticeView(
-            symbol: "exclamationmark.triangle",
+            symbol: failure.symbol,
             title: failure.title,
             message: failure.message
         ) {
             // A refused microphone can't be un-refused from in here, so
-            // "Try again" would be a button that provably can't work. The
+            // "Try Again" would be a button that provably can't work. The
             // only honest one goes where the answer can be changed.
             if failure == .microphonePermissionDenied {
                 Button("Open Settings") {
@@ -378,7 +372,7 @@ struct CaptureScreen: View {
                 }
                 .buttonStyle(.borderedProminent)
             } else {
-                Button("Try again") {
+                Button("Try Again") {
                     viewModel.reset()
                 }
                 .buttonStyle(.borderedProminent)
@@ -388,22 +382,32 @@ struct CaptureScreen: View {
 }
 
 private extension CaptureFailure {
+    // The two "we got nothing usable" cases across the app — this one and
+    // `OrganizeFailure.emptyTranscript` — share a symbol and a title so a
+    // dead end reads the same wherever the user hits one.
+    var symbol: String {
+        switch self {
+        case .microphonePermissionDenied, .captureFailed: "exclamationmark.triangle"
+        case .emptyRecording: "waveform.slash"
+        }
+    }
+
     var title: String {
         switch self {
-        case .microphonePermissionDenied: "Microphone access needed"
-        case .captureFailed: "Recording failed"
-        case .emptyRecording: "Nothing to tidy"
+        case .microphonePermissionDenied: String(localized: "Microphone access needed")
+        case .captureFailed: String(localized: "Recording failed")
+        case .emptyRecording: String(localized: "Nothing to tidy")
         }
     }
 
     var message: String {
         switch self {
         case .microphonePermissionDenied:
-            "TidyNote needs the microphone to record what you say. Turn it on in Settings."
+            String(localized: "TidyNote needs the microphone to record what you say. Turn it on in Settings.")
         case .captureFailed(let reason):
             reason
         case .emptyRecording:
-            "We didn't hear anything. Try again and speak for a few seconds."
+            String(localized: "We didn't hear anything. Speak for a few seconds and try again.")
         }
     }
 }

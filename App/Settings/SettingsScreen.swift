@@ -83,11 +83,11 @@ struct SettingsScreen: View {
                     .font(.headline)
 
                 if let remaining = plan.remaining {
-                    Text("Tidies left this month: \(remaining)")
+                    Text("^[\(remaining) tidies](inflect: true) left this month")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("\(PlanState.freeMonthlyLimit) tidies a month on the free plan.")
+                    Text("^[\(PlanState.freeMonthlyLimit) tidies](inflect: true) a month on the free plan.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }

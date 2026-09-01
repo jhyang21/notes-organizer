@@ -141,7 +141,7 @@ struct OrganizeRunTests {
         }
 
         // Whatever the error said goes to the log, not to the user.
-        #expect(reason == "Something went wrong.")
+        #expect(reason == "Something went wrong. Try again in a moment.")
         #expect(log.events().count == 1)
         #expect(log.events().first?.message.contains("Organize failed") == true)
         #expect(log.organizeTimings().isEmpty)

@@ -76,16 +76,20 @@ struct ShareRootView: View {
             statusView(message: "Reading what you shared…")
 
         case .organizing(let wordCount):
-            statusView(message: "Organizing \(wordCount) words…")
+            statusView(message: "Organizing ^[\(wordCount) words](inflect: true)…")
 
         case .preview(let note):
             previewView(note: note)
 
         case .nothingToOrganize:
+            // Same title and sentence shape as the app's own "nothing to
+            // work with" dead ends (`CaptureFailure.emptyRecording`,
+            // `OrganizeFailure.emptyTranscript`) — a text-family symbol
+            // instead of the voice ones, since nothing was even sent yet.
             NoticeView(
-                symbol: "doc.text",
-                title: "There's no text here",
-                message: "Select the text you want organized, then share it again."
+                symbol: "doc.slash",
+                title: String(localized: "Nothing to tidy"),
+                message: String(localized: "There's no text to organize. Select some text and share it again.")
             )
 
         case .unavailable(let failure):
@@ -103,7 +107,7 @@ struct ShareRootView: View {
         }
     }
 
-    private func statusView(message: String) -> some View {
+    private func statusView(message: LocalizedStringKey) -> some View {
         VStack(spacing: 16) {
             ProgressView()
             Text(message)
@@ -130,7 +134,7 @@ struct ShareRootView: View {
     @ViewBuilder
     private var copyOriginalButton: some View {
         if !model.originalText.isEmpty {
-            Button("Copy original text") {
+            Button("Copy Original Text") {
                 model.copyOriginalText()
             }
             .buttonStyle(.bordered)
