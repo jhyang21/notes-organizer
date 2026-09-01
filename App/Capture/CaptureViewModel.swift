@@ -159,6 +159,39 @@ final class CaptureViewModel {
         }
     }
 
+    /// A record request from outside the app: the widget, the Control Center
+    /// control, Siri, a `tidynote://record` link. The screen could be showing
+    /// anything at all, so it goes back to idle first and starts listening.
+    ///
+    /// Declined while something is still running or being held — a permission
+    /// prompt, a recording, a tidy in flight, a recording waiting to send. Each
+    /// of those is work the user hasn't finished with, and asking to record is
+    /// not asking to throw it away; the app comes to the front showing it
+    /// instead. The dead ends and the preview are fair game: they are screens
+    /// the user has already been shown, with nothing left running behind them.
+    ///
+    /// The kept note survives either way. It is in the draft slot, and the slot
+    /// is only overwritten when the next note arrives — so a recording started
+    /// over the top of a restored draft, and then abandoned, still leaves the
+    /// draft to come back to.
+    func startQuickCapture() {
+        // The first-run screen is a question the user hasn't answered yet.
+        // Recording behind it would be the app answering for them.
+        guard !isShowingFirstRun else { return }
+
+        switch state {
+        case .idle:
+            break
+        case .preview, .failed, .unavailable:
+            abandonCapture()
+            state = .idle
+        case .requestingPermissions, .recording, .uploading, .organizing, .readyToSend:
+            return
+        }
+
+        startCapture()
+    }
+
     /// User-initiated stop. Auto-stop (silence/hard cap) and interruption
     /// both route through the same `finishRecording()`.
     func stopRecording() {
@@ -220,6 +253,15 @@ final class CaptureViewModel {
     /// recording goes with it, and so does the kept note: the user has said
     /// they're done with both.
     func reset() {
+        abandonCapture()
+        drafts.clear()
+        state = .idle
+    }
+
+    /// Everything `reset()` does except forget the kept note: tasks cancelled,
+    /// the microphone stopped, the file on disk gone, the silence window fresh.
+    /// The state is left alone — the caller says where it goes next.
+    private func abandonCapture() {
         lifecycleTask?.cancel()
         lifecycleTask = nil
         organizeTask?.cancel()
@@ -230,9 +272,7 @@ final class CaptureViewModel {
             delete(interrupted)
         }
         discardRecording()
-        drafts.clear()
         silenceDetector = SilenceDetector(configuration: silence)
-        state = .idle
     }
 
     // MARK: - Coming and going

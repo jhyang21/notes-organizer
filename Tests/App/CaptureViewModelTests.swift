@@ -766,4 +766,134 @@ struct CaptureViewModelTests {
         #expect(viewModel.state == .preview(note))
         #expect(viewModel.isShowingFirstRun == false)
     }
+
+    // MARK: - Quick capture
+
+    @Test("a widget tap over a restored note records, and the note stays kept")
+    func quickCaptureOverADraftKeepsIt() async throws {
+        let defaults = try EphemeralDefaults()
+        let drafts = DraftStore(defaults: defaults.defaults)
+        drafts.save(note)
+        let recorder = MockRecorder()
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults),
+            drafts: drafts
+        )
+        viewModel.restoreDraftIfAvailable()
+
+        viewModel.startQuickCapture()
+        try await waitUntil("the recording to start") { recorder.isRecording }
+
+        // Nothing has replaced it yet, so it is still there to come back to.
+        #expect(drafts.load() == note)
+    }
+
+    @Test("a widget tap over a dead end records again, and the old file goes")
+    func quickCaptureOverADeadEndStartsOver() async throws {
+        let defaults = try EphemeralDefaults()
+        let recording = try makeRecordingFile()
+        let recorder = MockRecorder()
+        recorder.finished = recording
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults, remaining: 0)
+        )
+
+        viewModel.startCapture()
+        try await waitUntil("the recording to start") { recorder.isRecording }
+        viewModel.stopRecording()
+        try await waitUntil("the quota wall") {
+            viewModel.state == .unavailable(.cloudQuotaExhausted)
+        }
+
+        viewModel.startQuickCapture()
+        try await waitUntil("the second recording to start") { recorder.startCount == 2 }
+
+        #expect(FileManager.default.fileExists(atPath: recording.url.path) == false)
+    }
+
+    @Test("a widget tap during a recording is not a second recording")
+    func quickCaptureDuringARecordingIsIgnored() async throws {
+        let defaults = try EphemeralDefaults()
+        let recorder = MockRecorder()
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults)
+        )
+
+        viewModel.startCapture()
+        try await waitUntil("the recording to start") { recorder.isRecording }
+        viewModel.startQuickCapture()
+
+        #expect(recorder.startCount == 1)
+        #expect(recorder.isRecording)
+    }
+
+    @Test("a widget tap during a tidy leaves the tidy running")
+    func quickCaptureDuringATidyIsIgnored() async throws {
+        let defaults = try EphemeralDefaults()
+        let recorder = MockRecorder()
+        recorder.finished = try makeRecordingFile()
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            organizer: SlowOrganizer(),
+            store: makeStore(defaults)
+        )
+
+        viewModel.startCapture()
+        try await waitUntil("the recording to start") { recorder.isRecording }
+        viewModel.stopRecording()
+        try await waitUntil("the upload") { viewModel.state == .uploading }
+
+        viewModel.startQuickCapture()
+
+        #expect(viewModel.state == .uploading)
+        #expect(recorder.startCount == 1)
+    }
+
+    @Test("a widget tap over a held recording keeps it")
+    func quickCaptureOverAHeldRecordingIsIgnored() async throws {
+        let defaults = try EphemeralDefaults()
+        let recording = try makeRecordingFile(duration: 4)
+        let recorder = MockRecorder()
+        recorder.finished = recording
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults),
+            foreground: ForegroundFlag(false)
+        )
+
+        viewModel.startCapture()
+        try await waitUntil("the recording to start") { recorder.isRecording }
+        viewModel.stopRecording()
+        try await waitUntil("the held recording") { viewModel.state == .readyToSend(duration: 4) }
+
+        viewModel.startQuickCapture()
+
+        #expect(viewModel.state == .readyToSend(duration: 4))
+        #expect(FileManager.default.fileExists(atPath: recording.url.path))
+    }
+
+    @Test("a widget tap doesn't record behind the first-run screen")
+    func quickCaptureWaitsForTheFirstRunAnswer() async throws {
+        let defaults = try EphemeralDefaults()
+        let recorder = MockRecorder()
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults, consentGranted: false)
+        )
+        viewModel.showFirstRunIfNeeded()
+        #expect(viewModel.isShowingFirstRun)
+
+        viewModel.startQuickCapture()
+
+        #expect(recorder.startCount == 0)
+        #expect(viewModel.state == .idle)
+    }
 }

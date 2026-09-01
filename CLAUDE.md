@@ -13,7 +13,9 @@ prefixed `tidynote_`. There are no accounts — installs are identified by an
 anonymous `tidy:<UUID>` — and RevenueCat carries subscription status.
 
 The architecture is the repo layout: `App/` (the app), `ShareExtension/`
-(the appex), `Packages/NotesOrganizerKit/` (everything both share),
+(the appex), `Widgets/` (the widget and the Control Center control, both
+deep-linking `tidynote://` into the app),
+`Packages/NotesOrganizerKit/` (everything they share),
 `supabase/functions/tidynote_organize/` (the edge function), `fastlane/` and
 `.github/workflows/` (the pipeline), `docs/appstore/` (listing copy and
 review notes).
@@ -91,6 +93,11 @@ Certificates and provisioning profiles live in a separate private repo,
 `https://github.com/jhyang21/notes-organizer-certificates`, managed
 headlessly by fastlane `match` — nothing there is created or edited by
 hand.
+
+`match` mints profiles; it does not create App IDs with capabilities. A
+new target's bundle ID has to be registered in the developer portal
+first, with whatever capabilities its entitlements claim, or the next
+`beta` run fails on that ID.
 
 No `Gemfile.lock` is committed (see the Gemfile's own comment for why);
 CI runs a plain `bundle install`.

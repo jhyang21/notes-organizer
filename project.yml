@@ -48,6 +48,8 @@ targets:
         product: RevenueCatUI
       - target: ShareExtension
         embed: true
+      - target: WidgetsExtension
+        embed: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.immform.notesorganizer
@@ -85,6 +87,33 @@ targets:
         # renders the system-blue default, and the shared Kit views with it.
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
 
+  # The Lock Screen and Home Screen widget, plus the iOS 18 Control Center
+  # control. Same rule as the share extension: the kit and nothing else. It
+  # only needs a URL to open.
+  WidgetsExtension:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Widgets
+      - path: SharedAssets.xcassets
+    dependencies:
+      - package: NotesOrganizerKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.immform.notesorganizer.widgets
+        PRODUCT_NAME: WidgetsExtension
+        # No shared storage is read yet. The entitlement is here so the App ID
+        # carries the capability from the first build that ships — adding it
+        # later means a new profile and a rejected upload in between.
+        CODE_SIGN_ENTITLEMENTS: Widgets/Widgets.entitlements
+        CODE_SIGN_IDENTITY: "Apple Distribution"
+        PROVISIONING_PROFILE_SPECIFIER: match AppStore com.immform.notesorganizer.widgets
+        INFOPLIST_FILE: Widgets/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        # Same reason as the share extension: without this the widget's
+        # `Color.accentColor` is system blue.
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+
   # App-layer tests. Hosted by the app, so the app's own launch path runs
   # first — which is why `NotesOrganizerApp` skips RevenueCat under
   # `XCTestConfigurationFilePath`.
@@ -119,6 +148,7 @@ schemes:
       targets:
         NotesOrganizer: all
         ShareExtension: all
+        WidgetsExtension: all
         NotesOrganizerTests: [test]
     run:
       config: Debug

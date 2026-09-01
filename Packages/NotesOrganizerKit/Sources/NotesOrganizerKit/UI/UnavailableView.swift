@@ -18,21 +18,29 @@ public struct UnavailableView: View {
     private let onRetry: (() -> Void)?
     private let onUpgrade: (() -> Void)?
     private let inShareExtension: Bool
+    private let onOpenApp: ((URL) -> Void)?
 
     /// - Parameter inShareExtension: subscribing and getting started both
     ///   happen in the app and nowhere else. Set this where the app's screens
     ///   can't be reached, and those two dead ends say where the switch lives
     ///   instead of showing a button that couldn't work.
+    /// - Parameter onOpenApp: opens the app at the link handed to it. Where the
+    ///   host can hand off, the two share-extension hints become the buttons
+    ///   they describe; `nil` keeps the hint, which is what a host that can't
+    ///   open a URL leaves behind. Only read alongside `inShareExtension` — the
+    ///   app has its own way to reach both screens.
     public init(
         failure: OrganizeFailure,
         onRetry: (() -> Void)? = nil,
         onUpgrade: (() -> Void)? = nil,
-        inShareExtension: Bool = false
+        inShareExtension: Bool = false,
+        onOpenApp: ((URL) -> Void)? = nil
     ) {
         self.failure = failure
         self.onRetry = onRetry
         self.onUpgrade = onUpgrade
         self.inShareExtension = inShareExtension
+        self.onOpenApp = onOpenApp
     }
 
     public var body: some View {
@@ -62,7 +70,11 @@ public struct UnavailableView: View {
 
         case .cloudQuotaExhausted:
             if inShareExtension {
-                openAppHint(String(localized: "Open TidyNote to go Pro.", bundle: .module))
+                openApp(
+                    .paywall,
+                    title: String(localized: "See TidyNote Pro", bundle: .module),
+                    hint: String(localized: "Open TidyNote to go Pro.", bundle: .module)
+                )
             } else if let onUpgrade {
                 Button(String(localized: "See TidyNote Pro", bundle: .module), action: onUpgrade)
                     .buttonStyle(.borderedProminent)
@@ -70,7 +82,11 @@ public struct UnavailableView: View {
 
         case .cloudConsentNeeded:
             if inShareExtension {
-                openAppHint(String(localized: "Open TidyNote once to get started.", bundle: .module))
+                openApp(
+                    .open,
+                    title: String(localized: "Open TidyNote", bundle: .module),
+                    hint: String(localized: "Open TidyNote once to get started.", bundle: .module)
+                )
             } else {
                 // The app asks on first launch, so this shouldn't be reachable
                 // in it. Retrying recomputes the route, which puts the
@@ -88,10 +104,20 @@ public struct UnavailableView: View {
         }
     }
 
-    private func openAppHint(_ text: String) -> some View {
-        Text(text)
-            .font(.footnote.weight(.medium))
-            .multilineTextAlignment(.center)
+    /// The button when the host can hand the user to the app, the sentence
+    /// saying where to go when it can't. A share extension is officially free
+    /// to refuse to open a URL, so the sentence is not a fallback we expect to
+    /// go unused.
+    @ViewBuilder
+    private func openApp(_ link: QuickCaptureLink, title: String, hint: String) -> some View {
+        if let onOpenApp {
+            Button(title) { onOpenApp(link.url) }
+                .buttonStyle(.borderedProminent)
+        } else {
+            Text(hint)
+                .font(.footnote.weight(.medium))
+                .multilineTextAlignment(.center)
+        }
     }
 
     // MARK: - Copy
@@ -160,4 +186,12 @@ public struct UnavailableView: View {
 
 #Preview("Not set up, share extension") {
     UnavailableView(failure: .cloudConsentNeeded, inShareExtension: true)
+}
+
+#Preview("Quota exhausted, share extension that can open the app") {
+    UnavailableView(failure: .cloudQuotaExhausted, inShareExtension: true, onOpenApp: { _ in })
+}
+
+#Preview("Not set up, share extension that can open the app") {
+    UnavailableView(failure: .cloudConsentNeeded, inShareExtension: true, onOpenApp: { _ in })
 }

@@ -12,21 +12,33 @@ import SwiftUI
 /// without saying so.
 struct ShareRootView: View {
     @State private var model: ShareViewModel
+    /// Whether handing the user to the app is still worth offering. Opening a
+    /// URL is something an extension point may or may not support, and a share
+    /// extension is the case Apple documents as "may not" — so the first
+    /// refusal turns the buttons back into the sentences they replaced,
+    /// rather than leaving a button that provably does nothing.
+    @State private var canOpenApp = true
 
     private let items: [NSExtensionItem]
     private let onDone: () -> Void
     private let onCancel: () -> Void
+    private let onOpenApp: (@MainActor (URL) async -> Bool)?
 
+    /// - Parameter onOpenApp: hands the user to the app, and reports whether
+    ///   the host actually did it. Only the view controller has the extension
+    ///   context this needs.
     init(
         items: [NSExtensionItem],
         model: ShareViewModel = ShareViewModel(),
         onDone: @escaping () -> Void,
-        onCancel: @escaping () -> Void
+        onCancel: @escaping () -> Void,
+        onOpenApp: (@MainActor (URL) async -> Bool)? = nil
     ) {
         self.items = items
         _model = State(initialValue: model)
         self.onDone = onDone
         self.onCancel = onCancel
+        self.onOpenApp = onOpenApp
     }
 
     var body: some View {
@@ -99,10 +111,29 @@ struct ShareRootView: View {
                     onRetry: { Task { await model.retry() } },
                     // No paywall here — StoreKit's purchase UI doesn't work
                     // in a share extension, so `inShareExtension` turns the
-                    // buttons only the app can honour into a line saying so.
-                    inShareExtension: true
+                    // buttons only the app can honour into a line saying so,
+                    // or into a hand-off where the host allows one.
+                    inShareExtension: true,
+                    onOpenApp: openAppAction
                 )
                 copyOriginalButton
+            }
+        }
+    }
+
+    /// `nil` — which is `UnavailableView`'s hint copy — where there is no host
+    /// to ask, or where one has already said no.
+    private var openAppAction: ((URL) -> Void)? {
+        guard canOpenApp, let onOpenApp else { return nil }
+        return { url in
+            Task {
+                let opened = await onOpenApp(url)
+                if !opened {
+                    canOpenApp = false
+                    AccessibilityNotification.Announcement(
+                        String(localized: "TidyNote can't be opened from here.")
+                    ).post()
+                }
             }
         }
     }

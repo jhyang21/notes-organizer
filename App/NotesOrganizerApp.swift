@@ -1,3 +1,4 @@
+import NotesOrganizerKit
 import SwiftUI
 
 @main
@@ -48,6 +49,20 @@ struct NotesOrganizerApp: App {
                 .onChange(of: scenePhase) { _, phase in
                     if phase == .active {
                         plan.refresh()
+                    }
+                }
+                // Every link lands on this one screen, in this one scene,
+                // because everything a link can ask for — recording, the
+                // paywall — needs the two objects injected just above. A
+                // second scene to catch URLs would be a screen without them.
+                //
+                // The router rather than the screen directly: an App Intent
+                // has no view to talk to, and a cold launch's URL can arrive
+                // before the screen exists. Both leave the request in the same
+                // place, and the screen picks it up.
+                .onOpenURL { url in
+                    if let link = QuickCaptureLink.route(url) {
+                        QuickCaptureRouter.shared.request(link)
                     }
                 }
         }

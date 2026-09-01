@@ -40,6 +40,9 @@
     "New Note" : {
 
     },
+    "New tidy in ${applicationName}" : {
+
+    },
     "Note ready." : {
 
     },
@@ -50,6 +53,9 @@
 
     },
     "Open Settings" : {
+
+    },
+    "Opens TidyNote and starts recording straight away." : {
 
     },
     "Plan" : {
@@ -103,10 +109,19 @@
     "Settings" : {
 
     },
+    "Start a Tidy" : {
+
+    },
+    "Start a tidy in ${applicationName}" : {
+
+    },
     "Start Over" : {
 
     },
     "Start recording" : {
+
+    },
+    "Start recording in ${applicationName}" : {
 
     },
     "Stop" : {
