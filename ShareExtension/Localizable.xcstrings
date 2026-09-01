@@ -1,0 +1,33 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Cancel" : {
+
+    },
+    "Copy Original Text" : {
+
+    },
+    "Done" : {
+
+    },
+    "Note ready." : {
+
+    },
+    "Nothing to tidy" : {
+
+    },
+    "Organizing ^[%lld words](inflect: true)…" : {
+
+    },
+    "Reading what you shared…" : {
+
+    },
+    "There's no text to organize. Select some text and share it again." : {
+
+    },
+    "TidyNote" : {
+
+    }
+  },
+  "version" : "1.0"
+}

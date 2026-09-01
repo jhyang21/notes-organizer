@@ -16,7 +16,7 @@ public struct OrganizedNotePreviewView: View {
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
-                Text(note.title.isEmpty ? "Untitled note" : note.title)
+                Text(note.title.isEmpty ? String(localized: "Untitled note", bundle: .module) : note.title)
                     .font(.title2.bold())
                     .foregroundStyle(note.title.isEmpty ? .secondary : .primary)
                     .accessibilityAddTraits(.isHeader)
@@ -51,7 +51,7 @@ public struct OrganizedNotePreviewView: View {
 
     private var actionItemsView: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Action Items")
+            Text("Action Items", bundle: .module)
                 .font(.headline)
                 .accessibilityAddTraits(.isHeader)
             ForEach(Array(note.actionItems.enumerated()), id: \.offset) { _, item in

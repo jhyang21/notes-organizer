@@ -55,27 +55,27 @@ public struct UnavailableView: View {
     private var actions: some View {
         switch failure {
         case .networkUnavailable, .cloudUnavailable:
-            retryButton(title: "Try Again")
+            retryButton(title: String(localized: "Try Again", bundle: .module))
 
         case .emptyTranscript, .audioTooLarge:
-            retryButton(title: "Record Again")
+            retryButton(title: String(localized: "Record Again", bundle: .module))
 
         case .cloudQuotaExhausted:
             if inShareExtension {
-                openAppHint("Open TidyNote to go Pro.")
+                openAppHint(String(localized: "Open TidyNote to go Pro.", bundle: .module))
             } else if let onUpgrade {
-                Button("See TidyNote Pro", action: onUpgrade)
+                Button(String(localized: "See TidyNote Pro", bundle: .module), action: onUpgrade)
                     .buttonStyle(.borderedProminent)
             }
 
         case .cloudConsentNeeded:
             if inShareExtension {
-                openAppHint("Open TidyNote once to get started.")
+                openAppHint(String(localized: "Open TidyNote once to get started.", bundle: .module))
             } else {
                 // The app asks on first launch, so this shouldn't be reachable
                 // in it. Retrying recomputes the route, which puts the
                 // first-run screen up rather than leaving a dead end.
-                retryButton(title: "Try Again")
+                retryButton(title: String(localized: "Try Again", bundle: .module))
             }
         }
     }
@@ -111,27 +111,27 @@ public struct UnavailableView: View {
 
     private var title: String {
         switch failure {
-        case .emptyTranscript: "Nothing to tidy"
-        case .cloudQuotaExhausted: "You've used this month's tidies"
-        case .cloudConsentNeeded: "TidyNote isn't set up yet"
-        case .networkUnavailable: "You're offline"
-        case .audioTooLarge: "That recording is too long"
-        case .cloudUnavailable: "The tidy service hit a snag"
+        case .emptyTranscript: String(localized: "Nothing to tidy", bundle: .module)
+        case .cloudQuotaExhausted: String(localized: "You've used this month's tidies", bundle: .module)
+        case .cloudConsentNeeded: String(localized: "TidyNote isn't set up yet", bundle: .module)
+        case .networkUnavailable: String(localized: "You're offline", bundle: .module)
+        case .audioTooLarge: String(localized: "That recording is too long", bundle: .module)
+        case .cloudUnavailable: String(localized: "The tidy service hit a snag", bundle: .module)
         }
     }
 
     private var message: String {
         switch failure {
         case .emptyTranscript:
-            "We didn't catch enough to organize. Speak for a few seconds and try again."
+            String(localized: "We didn't catch enough to organize. Speak for a few seconds and try again.", bundle: .module)
         case .cloudQuotaExhausted:
-            "They come back next month, or go unlimited with TidyNote Pro."
+            String(localized: "They come back next month, or go unlimited with TidyNote Pro.", bundle: .module)
         case .cloudConsentNeeded:
-            "TidyNote says what it sends and asks once, in the app, before anything leaves your iPhone."
+            String(localized: "TidyNote says what it sends and asks once, in the app, before anything leaves your iPhone.", bundle: .module)
         case .networkUnavailable:
-            "TidyNote needs a connection to tidy a note. Nothing was lost — try again when you're back online."
+            String(localized: "TidyNote needs a connection to tidy a note. Nothing was lost — try again when you're back online.", bundle: .module)
         case .audioTooLarge:
-            "That recording is longer than TidyNote can handle. Try recording it in two parts."
+            String(localized: "That recording is longer than TidyNote can handle. Try recording it in two parts.", bundle: .module)
         case .cloudUnavailable(let reason):
             reason
         }

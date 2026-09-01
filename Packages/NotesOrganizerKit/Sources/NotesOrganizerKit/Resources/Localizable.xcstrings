@@ -1,0 +1,84 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Action Items" : {
+
+    },
+    "Copied" : {
+
+    },
+    "Copy as Text" : {
+
+    },
+    "Nothing to tidy" : {
+
+    },
+    "Open TidyNote once to get started." : {
+
+    },
+    "Open TidyNote to go Pro." : {
+
+    },
+    "Record Again" : {
+
+    },
+    "Save to Apple Notes…" : {
+
+    },
+    "See TidyNote Pro" : {
+
+    },
+    "Something went wrong on our end. Try again in a moment." : {
+
+    },
+    "Something went wrong. Try again in a moment." : {
+
+    },
+    "That recording is longer than TidyNote can handle. Try recording it in two parts." : {
+
+    },
+    "That recording is too long" : {
+
+    },
+    "The service is busy right now. Try again in a moment." : {
+
+    },
+    "The tidy service hit a snag" : {
+
+    },
+    "They come back next month, or go unlimited with TidyNote Pro." : {
+
+    },
+    "TidyNote isn't set up yet" : {
+
+    },
+    "TidyNote needs a connection to tidy a note. Nothing was lost — try again when you're back online." : {
+
+    },
+    "TidyNote says what it sends and asks once, in the app, before anything leaves your iPhone." : {
+
+    },
+    "Try Again" : {
+
+    },
+    "Untitled note" : {
+
+    },
+    "We couldn't read that recording. Try recording it again." : {
+
+    },
+    "We couldn't read the tidied note that came back. Try again." : {
+
+    },
+    "We didn't catch enough to organize. Speak for a few seconds and try again." : {
+
+    },
+    "You've used this month's tidies" : {
+
+    },
+    "You're offline" : {
+
+    }
+  },
+  "version" : "1.0"
+}

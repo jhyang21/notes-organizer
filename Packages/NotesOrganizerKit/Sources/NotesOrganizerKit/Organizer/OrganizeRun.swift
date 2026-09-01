@@ -90,7 +90,7 @@ public struct OrganizeRun: Sendable {
             // error's own words go to the log, where they help, rather than
             // onto a screen, where they would only alarm.
             log.recordEvent(source: source, message: "Organize failed: \(error.localizedDescription)")
-            return .failure(.cloudUnavailable(reason: "Something went wrong. Try again in a moment."))
+            return .failure(.cloudUnavailable(reason: String(localized: "Something went wrong. Try again in a moment.", bundle: .module)))
         }
     }
 }

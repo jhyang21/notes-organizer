@@ -1,0 +1,159 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "^[%lld tidies](inflect: true) a month on the free plan." : {
+
+    },
+    "^[%lld tidies](inflect: true) left this month" : {
+
+    },
+    "A recording is already running." : {
+
+    },
+    "Cancel" : {
+
+    },
+    "Continue" : {
+
+    },
+    "Diagnostics" : {
+
+    },
+    "Free plan" : {
+
+    },
+    "Go Pro" : {
+
+    },
+    "How TidyNote works" : {
+
+    },
+    "Long recordings can take a couple of minutes." : {
+
+    },
+    "Manage Subscription" : {
+
+    },
+    "Microphone access needed" : {
+
+    },
+    "New Note" : {
+
+    },
+    "Note ready." : {
+
+    },
+    "Nothing to tidy" : {
+
+    },
+    "OK" : {
+
+    },
+    "Open Settings" : {
+
+    },
+    "Plan" : {
+
+    },
+    "Privacy" : {
+
+    },
+    "Privacy Policy" : {
+
+    },
+    "Recording failed" : {
+
+    },
+    "Recording saved — %@." : {
+
+    },
+    "Recording started." : {
+
+    },
+    "Recording stopped automatically after 10 seconds of silence." : {
+
+    },
+    "Recording stopped." : {
+
+    },
+    "Recording stops automatically after 10 seconds of silence, or after 5 minutes." : {
+
+    },
+    "Requesting microphone access…" : {
+
+    },
+    "Restore if you've subscribed before on another iPhone or after reinstalling." : {
+
+    },
+    "Restore Purchases" : {
+
+    },
+    "Restoring purchases" : {
+
+    },
+    "Send" : {
+
+    },
+    "Sending your recording…" : {
+
+    },
+    "Settings" : {
+
+    },
+    "Start Over" : {
+
+    },
+    "Start recording" : {
+
+    },
+    "Stop" : {
+
+    },
+    "Tap to start talking. We'll turn it into an organized note." : {
+
+    },
+    "Terms of Use" : {
+
+    },
+    "The microphone didn't start. Try again." : {
+
+    },
+    "The recording didn't save. Try again." : {
+
+    },
+    "Tidies are unlimited." : {
+
+    },
+    "TidyNote" : {
+
+    },
+    "TidyNote needs the microphone to record what you say. Turn it on in Settings." : {
+
+    },
+    "TidyNote Pro" : {
+
+    },
+    "TidyNote records your voice, sends the recording over an encrypted connection to our servers, turns it into text, and organizes it into a note. We don't keep your recordings or your notes." : {
+
+    },
+    "Try Again" : {
+
+    },
+    "Turning it into a note…" : {
+
+    },
+    "We didn't hear anything. Speak for a few seconds and try again." : {
+
+    },
+    "We'll transcribe when you stop." : {
+
+    },
+    "Your recording and your note's text are sent over an encrypted connection so they can be transcribed and organized. We don't keep either one once the note comes back." : {
+
+    },
+    "Your recording is ready" : {
+
+    }
+  },
+  "version" : "1.0"
+}

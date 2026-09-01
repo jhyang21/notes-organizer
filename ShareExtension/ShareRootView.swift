@@ -54,7 +54,7 @@ struct ShareRootView: View {
         // preview arrive on its own.
         .onChange(of: model.state) { _, state in
             if case .preview = state {
-                AccessibilityNotification.Announcement("Note ready.").post()
+                AccessibilityNotification.Announcement(String(localized: "Note ready.")).post()
             }
         }
     }
