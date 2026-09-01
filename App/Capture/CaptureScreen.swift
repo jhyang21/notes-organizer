@@ -21,7 +21,7 @@ struct CaptureScreen: View {
 
     /// The one router the whole process shares, read here rather than injected:
     /// an App Intent has no view to inject it into.
-    @MainActor private var router: QuickCaptureRouter { .shared }
+    private var router: QuickCaptureRouter { .shared }
 
     init(viewModel: CaptureViewModel = CaptureViewModel()) {
         _viewModel = State(initialValue: viewModel)

@@ -114,14 +114,10 @@ public struct UnavailableView: View {
             Button(title) { onOpenApp(link.url) }
                 .buttonStyle(.borderedProminent)
         } else {
-            openAppHint(hint)
+            Text(hint)
+                .font(.footnote.weight(.medium))
+                .multilineTextAlignment(.center)
         }
-    }
-
-    private func openAppHint(_ text: String) -> some View {
-        Text(text)
-            .font(.footnote.weight(.medium))
-            .multilineTextAlignment(.center)
     }
 
     // MARK: - Copy
