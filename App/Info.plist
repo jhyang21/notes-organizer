@@ -22,6 +22,22 @@
     <string>$(CURRENT_PROJECT_VERSION)</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+    <!-- How the widget, the Control Center control, Siri, and the share
+         extension reach the app. `QuickCaptureLink` in NotesOrganizerKit is
+         the one place the routes themselves are written down. -->
+    <key>CFBundleURLTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>CFBundleURLName</key>
+            <string>com.immform.notesorganizer</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>tidynote</string>
+            </array>
+        </dict>
+    </array>
     <key>UIApplicationSupportsIndirectInputEvents</key>
     <true/>
     <key>UILaunchScreen</key>

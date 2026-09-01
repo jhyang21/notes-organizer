@@ -19,6 +19,11 @@ struct CaptureScreen: View {
     // caption below it at the biggest accessibility sizes.
     @ScaledMetric(relativeTo: .largeTitle) private var micIconSize: CGFloat = 72
 
+    /// Read through a computed property rather than stored: a `View`'s stored
+    /// properties are initialized outside the main actor, and the router lives
+    /// on it.
+    @MainActor private var router: QuickCaptureRouter { .shared }
+
     init(viewModel: CaptureViewModel = CaptureViewModel()) {
         _viewModel = State(initialValue: viewModel)
     }
@@ -89,6 +94,15 @@ struct CaptureScreen: View {
             // which means the first-run question was answered long ago.
             viewModel.restoreDraftIfAvailable()
             viewModel.showFirstRunIfNeeded()
+            // A widget tapped from a cold start left its request before this
+            // screen existed. Last, so it sees the two above.
+            consumeQuickCaptureRequest()
+        }
+        // And the warm case: a request that lands while the screen is already
+        // here. The two together cover both, and the router hands each request
+        // over once, so they can't both act on the same one.
+        .onChange(of: router.pending) { _, _ in
+            consumeQuickCaptureRequest()
         }
         // A recording outlives the screen it started on — the audio background
         // mode sees to that. `.inactive` is skipped, and the view model's
@@ -116,6 +130,26 @@ struct CaptureScreen: View {
         .onChange(of: viewModel.state) { old, new in
             if let announcement = accessibilityAnnouncement(from: old, to: new) {
                 AccessibilityNotification.Announcement(announcement).post()
+            }
+        }
+    }
+
+    // MARK: - Arriving from outside the app
+
+    /// Acts on whatever the widget, the control, Siri or a link asked for.
+    private func consumeQuickCaptureRequest() {
+        guard let link = router.take() else { return }
+        switch link {
+        case .open:
+            // Being here is the whole request.
+            break
+        case .record:
+            viewModel.startQuickCapture()
+        case .paywall:
+            // Nothing opens over the first-run screen, which is a question
+            // still waiting for its answer.
+            if !viewModel.isShowingFirstRun {
+                isShowingPaywall = true
             }
         }
     }
