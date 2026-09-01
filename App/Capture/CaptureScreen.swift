@@ -24,35 +24,26 @@ struct CaptureScreen: View {
                 switch viewModel.state {
                 case .idle:
                     idleView
-                        .transition(stateTransition)
                 case .requestingPermissions:
                     statusView(message: "Requesting microphone access…")
-                        .transition(stateTransition)
                 case .recording(let level, let elapsed):
                     recordingView(level: level, elapsed: elapsed)
-                        .transition(stateTransition)
                 case .uploading:
                     sendingView(message: "Sending your recording…")
-                        .transition(stateTransition)
                 case .organizing:
                     sendingView(message: "Turning it into a note…")
-                        .transition(stateTransition)
                 case .readyToSend(let duration):
                     readyToSendView(duration: duration)
-                        .transition(stateTransition)
                 case .preview(let note):
                     previewView(note: note)
-                        .transition(stateTransition)
                 case .failed(let failure):
                     captureFailureView(failure: failure)
-                        .transition(stateTransition)
                 case .unavailable(let failure):
                     UnavailableView(
                         failure: failure,
                         onRetry: { viewModel.retry() },
                         onUpgrade: { isShowingPaywall = true }
                     )
-                    .transition(stateTransition)
                 }
             }
             .padding()
@@ -108,24 +99,14 @@ struct CaptureScreen: View {
         }
     }
 
-    // MARK: - Motion and haptics
-
-    /// A state change reads as a cross-fade with Reduce Motion off, and as an
-    /// instant swap with it on — `.identity` isn't "no transition", it's the
-    /// plain one.
-    private var stateTransition: AnyTransition {
-        reduceMotion ? .identity : .opacity
-    }
+    // MARK: - Haptics
 
     /// One haptic per state change that means something, not one per tick of
     /// the meter: entering `.recording` (from anywhere else) is the only
     /// `.impact`, leaving it for `.uploading` or `.readyToSend` is the "you
     /// said stop and it heard you" `.success` — auto-stop and the hard cap
     /// both route through the same transition, so they get the same feedback.
-    /// A note arriving from the organizer is `.success` too — except a note
-    /// that was already sitting there before the user did anything, which is
-    /// what a cold launch onto a restored draft is. A haptic is feedback for
-    /// something just done; restoring one isn't that.
+    /// A note arriving from the organizer is `.success` too.
     private func captureFeedback(
         from old: CaptureViewModel.State,
         to new: CaptureViewModel.State

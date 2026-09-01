@@ -24,7 +24,7 @@ struct RecordingIndicatorView: View {
                     .fill(Color.accentColor.opacity(0.15))
                     .frame(width: 120, height: 120)
                     .scaleEffect(scale)
-                    .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: level)
+                    .animation(.easeOut(duration: 0.12), value: level)
 
                 Image(systemName: "waveform")
                     .font(.system(size: 40, weight: .medium))
