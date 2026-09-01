@@ -24,7 +24,7 @@ final class AudioRecorderService: AudioRecording {
 
         var errorDescription: String? {
             switch self {
-            case .alreadyRecording: "A recording is already running."
+            case .alreadyRecording: String(localized: "A recording is already running.")
             case .startFailed(let reason): reason
             }
         }
@@ -116,7 +116,7 @@ final class AudioRecorderService: AudioRecording {
         }
         recorder.isMeteringEnabled = true
         guard recorder.record() else {
-            throw RecorderError.startFailed("The microphone didn't start. Try again.")
+            throw RecorderError.startFailed(String(localized: "The microphone didn't start. Try again."))
         }
 
         self.recorder = recorder

@@ -16,14 +16,17 @@ struct FirstRunScreen: View {
         VStack(spacing: 24) {
             NoticeView(
                 symbol: "sparkles",
-                title: "How TidyNote works",
-                message: """
+                title: String(localized: "How TidyNote works"),
+                message: String(localized: """
                 TidyNote records your voice, sends the recording over an \
                 encrypted connection to our servers, turns it into text, and \
                 organizes it into a note. We don't keep your recordings or \
                 your notes.
-                """
+                """)
             )
+
+            Link("Privacy Policy", destination: ExternalLinks.privacyPolicy)
+                .font(.footnote)
 
             Button("Continue", action: onContinue)
                 .buttonStyle(.borderedProminent)

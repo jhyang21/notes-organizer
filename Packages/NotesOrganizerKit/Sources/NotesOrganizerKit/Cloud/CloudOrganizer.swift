@@ -254,10 +254,10 @@ public struct CloudOrganizer: NoteOrganizing, VoiceOrganizing {
     /// Failure text goes straight to the user under "The tidy service hit a
     /// snag", so it says what to do and names no vendor, endpoint, or status.
     private enum Copy {
-        static let busy = "The service is busy right now. Try again in a moment."
-        static let serverProblem = "Something went wrong on our end. Try again in a moment."
-        static let unreadable = "We couldn't read the tidied note that came back. Try again."
-        static let unreadableRecording = "We couldn't read that recording. Try recording it again."
+        static let busy = String(localized: "The service is busy right now. Try again in a moment.", bundle: .module)
+        static let serverProblem = String(localized: "Something went wrong on our end. Try again in a moment.", bundle: .module)
+        static let unreadable = String(localized: "We couldn't read the tidied note that came back. Try again.", bundle: .module)
+        static let unreadableRecording = String(localized: "We couldn't read that recording. Try recording it again.", bundle: .module)
     }
 
     // MARK: - Defaults

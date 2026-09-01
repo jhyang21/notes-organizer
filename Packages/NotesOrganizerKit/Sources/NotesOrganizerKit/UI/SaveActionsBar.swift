@@ -33,6 +33,10 @@ public struct SaveActionsBar: View {
     // changes twice per copy. The trigger has to move only forward, and only
     // when motion is allowed — so this counts the copies that get to bounce.
     @State private var copyCount = 0
+    // Holds the pending "revert to Copy as Text" timer so a second copy can
+    // cancel it — otherwise two quick copies race, and the first one's timer
+    // reverts the label out from under the second.
+    @State private var revertTask: Task<Void, Never>?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(note: OrganizedNote, source: DiagnosticsSource, log: DiagnosticsLog = .shared) {
@@ -57,8 +61,12 @@ public struct SaveActionsBar: View {
 
     private var saveToNotes: some View {
         ShareLink(item: plainText, subject: Text(note.title)) {
-            Label("Save to Apple Notes…", systemImage: "square.and.arrow.up")
-                .frame(maxWidth: .infinity)
+            Label {
+                Text("Save to Apple Notes…", bundle: .module)
+            } icon: {
+                Image(systemName: "square.and.arrow.up")
+            }
+            .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
@@ -74,7 +82,7 @@ public struct SaveActionsBar: View {
             copyAsText()
         } label: {
             Label {
-                Text(showCopiedConfirmation ? "Copied" : "Copy as text")
+                Text(showCopiedConfirmation ? "Copied" : "Copy as Text", bundle: .module)
             } icon: {
                 Image(systemName: showCopiedConfirmation ? "checkmark" : "doc.on.doc")
                     .symbolEffect(.bounce, value: copyCount)
@@ -91,9 +99,11 @@ public struct SaveActionsBar: View {
         record(.copyAsText)
         showCopiedConfirmation = true
         if !reduceMotion { copyCount += 1 }
-        AccessibilityNotification.Announcement("Copied").post()
-        Task {
+        AccessibilityNotification.Announcement(String(localized: "Copied", bundle: .module)).post()
+        revertTask?.cancel()
+        revertTask = Task {
             try? await Task.sleep(for: .seconds(2))
+            guard !Task.isCancelled else { return }
             showCopiedConfirmation = false
         }
     }

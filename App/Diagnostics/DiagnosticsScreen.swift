@@ -99,7 +99,7 @@ struct DiagnosticsScreen: View {
                     }
                 }
 
-                Button("Clear log", role: .destructive) {
+                Button("Clear Log", role: .destructive) {
                     viewModel.clearLog()
                 }
             }

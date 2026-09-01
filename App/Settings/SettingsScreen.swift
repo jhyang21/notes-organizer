@@ -32,8 +32,6 @@ struct SettingsScreen: View {
     @State private var versionTaps = 0
 
     private static let tapsToRevealDiagnostics = 5
-    private static let privacyPolicyURL = URL(string: "https://jhyang21.github.io/notes-organizer/privacy.html")!
-    private static let termsURL = URL(string: "https://jhyang21.github.io/notes-organizer/terms.html")!
 
     var body: some View {
         List {
@@ -83,11 +81,11 @@ struct SettingsScreen: View {
                     .font(.headline)
 
                 if let remaining = plan.remaining {
-                    Text("Tidies left this month: \(remaining)")
+                    Text("^[\(remaining) tidies](inflect: true) left this month")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
-                    Text("\(PlanState.freeMonthlyLimit) tidies a month on the free plan.")
+                    Text("^[\(PlanState.freeMonthlyLimit) tidies](inflect: true) a month on the free plan.")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -141,8 +139,8 @@ struct SettingsScreen: View {
             .font(.footnote)
             .foregroundStyle(.secondary)
 
-            Link("Privacy Policy", destination: Self.privacyPolicyURL)
-            Link("Terms of Use", destination: Self.termsURL)
+            Link("Privacy Policy", destination: ExternalLinks.privacyPolicy)
+            Link("Terms of Use", destination: ExternalLinks.terms)
         }
     }
 
