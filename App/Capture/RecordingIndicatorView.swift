@@ -36,9 +36,6 @@ struct RecordingIndicatorView: View {
                     .symbolEffect(.variableColor.iterative, isActive: !reduceMotion)
             }
             .frame(width: containerSize, height: containerSize)
-            // Decorative — the level meter has no meaning on its own that
-            // isn't already said by the label and value below.
-            .accessibilityHidden(true)
 
             Text(elapsedLabel)
                 .font(.title3.monospacedDigit())

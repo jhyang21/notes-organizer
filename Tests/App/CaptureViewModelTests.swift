@@ -221,9 +221,11 @@ struct CaptureViewModelTests {
 
         viewModel.startCapture()
         try await waitUntil("the recording to start") { recorder.isRecording }
+        #expect(viewModel.lastStopReason == nil)
         viewModel.stopRecording()
 
         try await waitUntil("the note") { viewModel.state == .preview(note) }
+        #expect(viewModel.lastStopReason == .manual)
         #expect(await organizer.receivedRecordings == [recording.url])
         // The note is here, so the recording has done its job.
         #expect(FileManager.default.fileExists(atPath: recording.url.path) == false)
@@ -249,7 +251,28 @@ struct CaptureViewModelTests {
 
         try await waitUntil("the note") { viewModel.state == .preview(note) }
         #expect(recorder.isRecording == false)
+        #expect(viewModel.lastStopReason == .autoStopSilence)
         #expect(await organizer.receivedRecordings == [recording.url])
+    }
+
+    @Test("the hard cap stops the recording with its own reason, not silence's")
+    func hardCapSetsTheReason() async throws {
+        let defaults = try EphemeralDefaults()
+        let recorder = MockRecorder()
+        recorder.finished = try makeRecordingFile()
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults),
+            silence: .hardCapReachedImmediately
+        )
+
+        viewModel.startCapture()
+        try await waitUntil("the recording to start") { recorder.isRecording }
+        recorder.emit(0.5)
+
+        try await waitUntil("the note") { viewModel.state == .preview(note) }
+        #expect(viewModel.lastStopReason == .autoStopHardCap)
     }
 
     @Test("an interruption ends the recording the same way a tap does")
@@ -269,6 +292,7 @@ struct CaptureViewModelTests {
         recorder.onInterrupted?()
 
         try await waitUntil("the note") { viewModel.state == .preview(note) }
+        #expect(viewModel.lastStopReason == .interrupted)
     }
 
     @Test("a recording that didn't save is a failure, not an empty upload")
@@ -643,84 +667,6 @@ struct CaptureViewModelTests {
 
         #expect(recorder.isRecording)
         #expect(viewModel.state.recordingLevel == 0)
-    }
-
-    // MARK: - Stop reason
-
-    @Test("a tap on Stop is a manual stop")
-    func manualStopSetsTheReason() async throws {
-        let defaults = try EphemeralDefaults()
-        let recording = try makeRecordingFile()
-        let recorder = MockRecorder()
-        recorder.finished = recording
-        let viewModel = makeViewModel(recorder: recorder, organizer: MockOrganizer(result: note), store: makeStore(defaults))
-
-        viewModel.startCapture()
-        try await waitUntil("the recording to start") { recorder.isRecording }
-        #expect(viewModel.lastStopReason == nil)
-
-        viewModel.stopRecording()
-        try await waitUntil("the note") { viewModel.state == .preview(note) }
-
-        #expect(viewModel.lastStopReason == .manual)
-    }
-
-    @Test("a pause stops the recording with the silence reason")
-    func silenceAutoStopSetsTheReason() async throws {
-        let defaults = try EphemeralDefaults()
-        let recording = try makeRecordingFile()
-        let recorder = MockRecorder()
-        recorder.finished = recording
-        let viewModel = makeViewModel(
-            recorder: recorder,
-            organizer: MockOrganizer(result: note),
-            store: makeStore(defaults),
-            silence: .stopsOnFirstSilence
-        )
-
-        viewModel.startCapture()
-        try await waitUntil("the recording to start") { recorder.isRecording }
-        recorder.emit(0)
-
-        try await waitUntil("the note") { viewModel.state == .preview(note) }
-        #expect(viewModel.lastStopReason == .autoStopSilence)
-    }
-
-    @Test("the hard cap stops the recording with its own reason, not silence's")
-    func hardCapSetsTheReason() async throws {
-        let defaults = try EphemeralDefaults()
-        let recording = try makeRecordingFile()
-        let recorder = MockRecorder()
-        recorder.finished = recording
-        let viewModel = makeViewModel(
-            recorder: recorder,
-            organizer: MockOrganizer(result: note),
-            store: makeStore(defaults),
-            silence: .hardCapReachedImmediately
-        )
-
-        viewModel.startCapture()
-        try await waitUntil("the recording to start") { recorder.isRecording }
-        recorder.emit(0.5)
-
-        try await waitUntil("the note") { viewModel.state == .preview(note) }
-        #expect(viewModel.lastStopReason == .autoStopHardCap)
-    }
-
-    @Test("an interruption stops the recording with its own reason")
-    func interruptionSetsTheReason() async throws {
-        let defaults = try EphemeralDefaults()
-        let recording = try makeRecordingFile()
-        let recorder = MockRecorder()
-        recorder.finished = recording
-        let viewModel = makeViewModel(recorder: recorder, organizer: MockOrganizer(result: note), store: makeStore(defaults))
-
-        viewModel.startCapture()
-        try await waitUntil("the recording to start") { recorder.isRecording }
-        recorder.onInterrupted?()
-
-        try await waitUntil("the note") { viewModel.state == .preview(note) }
-        #expect(viewModel.lastStopReason == .interrupted)
     }
 
     // MARK: - Drafts
