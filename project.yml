@@ -34,6 +34,9 @@ targets:
     platform: iOS
     sources:
       - path: App
+      # Shared with ShareExtension so the accent color it names renders the
+      # same in both targets — one asset catalog, not two copies to drift.
+      - path: SharedAssets.xcassets
     dependencies:
       - package: NotesOrganizerKit
       # App target only. The share extension reads `EntitlementStore` and
@@ -66,6 +69,7 @@ targets:
     platform: iOS
     sources:
       - path: ShareExtension
+      - path: SharedAssets.xcassets
     dependencies:
       - package: NotesOrganizerKit
     settings:
@@ -77,6 +81,10 @@ targets:
         PROVISIONING_PROFILE_SPECIFIER: match AppStore com.immform.notesorganizer.share
         INFOPLIST_FILE: ShareExtension/Info.plist
         GENERATE_INFOPLIST_FILE: NO
+        # So the "Save to Apple Notes…" button in Kit views reads terracotta
+        # here too, not the system-blue default — the same asset catalog as
+        # the app, named the same way.
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
 
   # App-layer tests. Hosted by the app, so the app's own launch path runs
   # first — which is why `NotesOrganizerApp` skips RevenueCat under
