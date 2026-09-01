@@ -1,50 +1,55 @@
 import NotesOrganizerKit
-import RevenueCat
+import StoreKit
 import SwiftUI
 
 /// Everything about the account that isn't capturing a note: which plan the
 /// user is on, how many tidies are left, the two buttons Apple requires next
-/// to a subscription, what leaves the iPhone, and the way in to Diagnostics.
+/// to a subscription, what leaves the iPhone, and — for whoever knows where it
+/// is — the way in to Diagnostics.
 ///
-/// The plan lines read from `EntitlementStore`, which is plain shared
-/// storage rather than anything observable, so the screen pulls a snapshot
-/// when it appears and again after the paywall closes. That is enough: nothing
-/// else changes the plan while this screen is on top.
+/// The plan lines come from `PlanModel`, so a purchase made on the paywall
+/// changes them without this screen asking. It still refreshes on appear: the
+/// share extension can spend a tidy while the app is in the background, and
+/// walking into Settings is a fine moment to catch up.
 struct SettingsScreen: View {
-    @State private var isPro = false
-    @State private var remaining: Int?
+    @Environment(PlanModel.self) private var plan
+    @Environment(PurchasesController.self) private var purchases
+
     @State private var isShowingPaywall = false
-    @State private var isRestoring = false
+    @State private var isShowingManageSubscriptions = false
     /// The last restore's answer, and whether its alert is up. Two pieces of
     /// state rather than one because the alert reads its title while it
     /// animates away: clearing the outcome on dismissal blanked the title on
     /// the way out.
-    @State private var restoreOutcome: RestoreOutcome?
+    @State private var restoreOutcome: PurchasesController.RestoreOutcome?
     @State private var isShowingRestoreOutcome = false
 
-    @Environment(\.openURL) private var openURL
+    /// Diagnostics is a workbench, not a feature. It stays out of a release
+    /// build's Settings until someone taps the version line five times —
+    /// enough that nobody finds it by accident, little enough that a
+    /// TestFlight tester can be told how over the phone.
+    @AppStorage("diagnosticsUnlocked") private var isDiagnosticsUnlocked = false
+    @State private var versionTaps = 0
 
-    private static let manageSubscriptionsURL = URL(string: "https://apps.apple.com/account/subscriptions")!
+    private static let tapsToRevealDiagnostics = 5
+    private static let privacyPolicyURL = URL(string: "https://jhyang21.github.io/notes-organizer/privacy.html")!
+    private static let termsURL = URL(string: "https://jhyang21.github.io/notes-organizer/terms.html")!
 
     var body: some View {
         List {
             planSection
             purchasesSection
             privacySection
-
-            Section {
-                NavigationLink {
-                    DiagnosticsScreen()
-                } label: {
-                    Label("Diagnostics", systemImage: "stethoscope")
-                }
-            }
+            aboutSection
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(isPresented: $isShowingPaywall, onDismiss: refresh) {
+        .sheet(isPresented: $isShowingPaywall, onDismiss: { plan.refresh() }) {
             PaywallScreen()
         }
+        // Apple's own sheet, in the app, instead of throwing the user out to
+        // Safari and asking them to find the subscription again.
+        .manageSubscriptionsSheet(isPresented: $isShowingManageSubscriptions)
         .alert(
             restoreOutcome?.title ?? "",
             isPresented: $isShowingRestoreOutcome,
@@ -55,7 +60,7 @@ struct SettingsScreen: View {
             Text(outcome.message)
         }
         .onAppear {
-            refresh()
+            plan.refresh()
         }
     }
 
@@ -64,7 +69,7 @@ struct SettingsScreen: View {
     @ViewBuilder
     private var planSection: some View {
         Section("Plan") {
-            if isPro {
+            if plan.isPro {
                 Label("TidyNote Pro", systemImage: "sparkles")
                     .font(.headline)
                 Text("Tidies are unlimited.")
@@ -74,7 +79,7 @@ struct SettingsScreen: View {
                 Text("Free plan")
                     .font(.headline)
 
-                if let remaining {
+                if let remaining = plan.remaining {
                     Text("Tidies left this month: \(remaining)")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
@@ -84,6 +89,9 @@ struct SettingsScreen: View {
                         .foregroundStyle(.secondary)
                 }
 
+                // No price here on purpose: the paywall renders the live
+                // StoreKit prices and terms, so a second copy in Settings is
+                // only ever a chance to be wrong.
                 Button("Go Pro") {
                     isShowingPaywall = true
                 }
@@ -101,16 +109,16 @@ struct SettingsScreen: View {
             } label: {
                 HStack {
                     Text("Restore Purchases")
-                    if isRestoring {
+                    if purchases.isRestoring {
                         Spacer()
                         ProgressView()
                     }
                 }
             }
-            .disabled(isRestoring)
+            .disabled(purchases.isRestoring)
 
             Button("Manage Subscription") {
-                openURL(Self.manageSubscriptionsURL)
+                isShowingManageSubscriptions = true
             }
         } footer: {
             Text("Restore if you've subscribed before on another iPhone or after reinstalling.")
@@ -128,57 +136,70 @@ struct SettingsScreen: View {
             """)
             .font(.footnote)
             .foregroundStyle(.secondary)
+
+            Link("Privacy Policy", destination: Self.privacyPolicyURL)
+            Link("Terms of Use", destination: Self.termsURL)
         }
+    }
+
+    // MARK: - About
+
+    private var aboutSection: some View {
+        Section {
+            if isDiagnosticsVisible {
+                NavigationLink {
+                    DiagnosticsScreen()
+                } label: {
+                    Label("Diagnostics", systemImage: "stethoscope")
+                }
+            }
+        } footer: {
+            Text(versionLabel)
+                .frame(maxWidth: .infinity, alignment: .center)
+                // A footer is not a control, so the tap needs somewhere to
+                // land: without this only the glyphs themselves are hittable.
+                .contentShape(Rectangle())
+                .onTapGesture { registerVersionTap() }
+        }
+    }
+
+    private var isDiagnosticsVisible: Bool {
+        #if DEBUG
+        return true
+        #else
+        return isDiagnosticsUnlocked
+        #endif
+    }
+
+    private var versionLabel: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let build = info?["CFBundleVersion"] as? String ?? "0"
+        return "TidyNote \(version) (\(build))"
     }
 
     // MARK: - Actions
 
-    private func refresh() {
-        isPro = EntitlementStore.shared.isPro()
-        remaining = EntitlementStore.shared.cloudRemaining()
-    }
-
-    /// Apple requires a restore button, and it has to be honest about finding
-    /// nothing — "restored" on a device that owns no subscription is worse
-    /// than useless.
-    private func restore() async {
-        isRestoring = true
-        defer { isRestoring = false }
-
-        do {
-            let customerInfo = try await Purchases.shared.restorePurchases()
-            EntitlementStore.shared.recordIsPro(customerInfo.isPro)
-            refresh()
-            present(customerInfo.isPro
-                ? RestoreOutcome(
-                    title: "Purchases restored",
-                    message: "TidyNote Pro is active on this iPhone."
-                )
-                : RestoreOutcome(
-                    title: "Nothing to restore",
-                    message: "We didn't find a TidyNote Pro subscription on this Apple Account."
-                ))
-        } catch {
-            present(RestoreOutcome(
-                title: "Couldn't restore",
-                message: error.localizedDescription
-            ))
+    private func registerVersionTap() {
+        guard !isDiagnosticsUnlocked else { return }
+        versionTaps += 1
+        if versionTaps >= Self.tapsToRevealDiagnostics {
+            isDiagnosticsUnlocked = true
         }
     }
 
-    private func present(_ outcome: RestoreOutcome) {
-        restoreOutcome = outcome
+    private func restore() async {
+        restoreOutcome = await purchases.restore()
         isShowingRestoreOutcome = true
-    }
-
-    private struct RestoreOutcome {
-        let title: String
-        let message: String
     }
 }
 
 #Preview {
+    let plan = PlanModel()
+
     NavigationStack {
         SettingsScreen()
     }
+    .environment(plan)
+    .environment(PurchasesController(plan: plan))
 }

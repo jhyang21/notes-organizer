@@ -9,6 +9,7 @@ import UIKit
 struct CaptureScreen: View {
     @State private var viewModel: CaptureViewModel
     @State private var isShowingPaywall = false
+    @Environment(PlanModel.self) private var plan
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
 
@@ -87,6 +88,14 @@ struct CaptureScreen: View {
             default: break
             }
         }
+        // Back at idle is where the count is on screen, and the tidy that just
+        // finished is what changed it. Only this case: the recording states
+        // change several times a second.
+        .onChange(of: viewModel.state) { _, state in
+            if case .idle = state {
+                plan.refresh()
+            }
+        }
     }
 
     // MARK: - States
@@ -109,6 +118,21 @@ struct CaptureScreen: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+
+            // Only when there is a real number to say. Pro is unlimited, and a
+            // fresh install hasn't heard a count from the server yet; both
+            // read as nothing rather than as a guess.
+            if let remaining = plan.remaining {
+                Group {
+                    if remaining == 1 {
+                        Text("1 tidy left this month")
+                    } else {
+                        Text("\(remaining) tidies left this month")
+                    }
+                }
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -260,6 +284,8 @@ private extension CaptureFailure {
 }
 
 #Preview("Preview state") {
+    let plan = PlanModel()
+
     CaptureScreen(viewModel: CaptureViewModel(routing: OrganizeRouting(
         cloud: MockOrganizer(result: OrganizedNote(
             title: "Kitchen Renovation Notes",
@@ -267,4 +293,6 @@ private extension CaptureFailure {
             actionItems: ["Call the contractor back on Thursday"]
         ))
     )))
+    .environment(plan)
+    .environment(PurchasesController(plan: plan))
 }

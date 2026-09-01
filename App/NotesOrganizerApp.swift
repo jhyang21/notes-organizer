@@ -2,21 +2,32 @@ import SwiftUI
 
 @main
 struct NotesOrganizerApp: App {
-    /// RevenueCat wants the app user ID before it configures, and the paywall
-    /// wants offerings ready before the user can reach Settings — so this
-    /// happens at launch rather than at the first sight of a paywall.
-    ///
-    /// The sweep is here for the opposite reason: a recording left behind by a
-    /// tidy nobody came back to should go before the user does anything else,
-    /// and launch is the one moment we know no recording is in flight.
+    /// The plan every screen reads, and the one object allowed to change it.
+    /// Both live for the whole process: RevenueCat wants the app user ID
+    /// before it configures, and the paywall wants offerings ready before the
+    /// user can reach Settings.
+    @State private var plan: PlanModel
+    @State private var purchases: PurchasesController
+
+    @Environment(\.scenePhase) private var scenePhase
+
+    /// The sweep is here for the opposite reason to the store: a recording
+    /// left behind by a tidy nobody came back to should go before the user
+    /// does anything else, and launch is the one moment we know no recording
+    /// is in flight.
     ///
     /// The unit tests are hosted by this app, so a test run launches it for
     /// real. RevenueCat is skipped there — a test that reaches the network is
-    /// not a test. The sweep stays: it unlinks stale temporary files and
-    /// talks to nothing.
+    /// not a test. Everything else stays: the plan reads shared storage and
+    /// the sweep unlinks stale temporary files, and neither talks to anyone.
     init() {
+        let plan = PlanModel()
+        let purchases = PurchasesController(plan: plan)
+        _plan = State(initialValue: plan)
+        _purchases = State(initialValue: purchases)
+
         if !Self.isRunningTests {
-            PurchasesBootstrap.configure()
+            purchases.configure()
         }
         AudioRecorderService.sweepStaleRecordings()
     }
@@ -28,6 +39,17 @@ struct NotesOrganizerApp: App {
     var body: some Scene {
         WindowGroup {
             CaptureScreen()
+                .environment(plan)
+                .environment(purchases)
+                // A tidy spent in the share extension, or a subscription
+                // bought on another iPhone, happens while this app is away.
+                // Coming back is the moment to ask again — and the only
+                // moment the answer is on screen.
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active {
+                        plan.refresh()
+                    }
+                }
         }
     }
 }
