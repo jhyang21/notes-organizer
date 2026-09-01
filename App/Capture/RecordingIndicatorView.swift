@@ -7,8 +7,14 @@ struct RecordingIndicatorView: View {
     let level: Float
     let elapsed: Duration
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    // Reduce Motion turns the pulse off rather than just unanimating it — a
+    // circle that still jumps to a new size on every meter sample is motion
+    // by another name.
     private var scale: CGFloat {
-        1.0 + CGFloat(min(max(level, 0), 1)) * 0.5
+        guard !reduceMotion else { return 1.0 }
+        return 1.0 + CGFloat(min(max(level, 0), 1)) * 0.5
     }
 
     var body: some View {
@@ -23,6 +29,7 @@ struct RecordingIndicatorView: View {
                 Image(systemName: "waveform")
                     .font(.system(size: 40, weight: .medium))
                     .foregroundStyle(Color.accentColor)
+                    .symbolEffect(.variableColor.iterative, isActive: !reduceMotion)
             }
             .frame(width: 160, height: 160)
 

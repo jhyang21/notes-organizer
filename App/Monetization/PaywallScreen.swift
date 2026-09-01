@@ -13,10 +13,15 @@ struct PaywallScreen: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(PurchasesController.self) private var purchases
 
+    /// Flips true on a purchase or a restore that actually found Pro — the
+    /// haptic below fires on that, not on the sheet appearing or closing.
+    @State private var didUnlockPro = false
+
     var body: some View {
         PaywallView(displayCloseButton: true)
             .onPurchaseCompleted { customerInfo in
                 purchases.recordEntitlement(isPro: customerInfo.isPro)
+                didUnlockPro = customerInfo.isPro
                 dismiss()
             }
             .onRestoreCompleted { customerInfo in
@@ -25,8 +30,10 @@ struct PaywallScreen: View {
                 // came here to subscribe, and closing on them would read as
                 // though it had worked.
                 if customerInfo.isPro {
+                    didUnlockPro = true
                     dismiss()
                 }
             }
+            .sensoryFeedback(.success, trigger: didUnlockPro) { _, new in new }
     }
 }

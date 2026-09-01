@@ -59,6 +59,9 @@ struct SettingsScreen: View {
         } message: { outcome in
             Text(outcome.message)
         }
+        // "Nothing to restore" and "failed" are both just news; only an
+        // actual restore is a success worth feeling.
+        .sensoryFeedback(.success, trigger: restoreOutcome) { _, new in new == .restored }
         .onAppear {
             plan.refresh()
         }

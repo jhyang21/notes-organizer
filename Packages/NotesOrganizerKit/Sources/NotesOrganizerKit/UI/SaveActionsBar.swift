@@ -29,6 +29,11 @@ public struct SaveActionsBar: View {
     private let log: DiagnosticsLog
 
     @State private var showCopiedConfirmation = false
+    // `.bounce` fires on every change of its trigger, and `showCopiedConfirmation`
+    // changes twice per copy. The trigger has to move only forward, and only
+    // when motion is allowed — so this counts the copies that get to bounce.
+    @State private var copyCount = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(note: OrganizedNote, source: DiagnosticsSource, log: DiagnosticsLog = .shared) {
         self.note = note
@@ -42,13 +47,17 @@ public struct SaveActionsBar: View {
             saveToNotes
             copyAsTextButton
         }
+        // The confirmation state is the honest trigger — a `simultaneousGesture`
+        // on the ShareLink fires even when the person cancels the share sheet,
+        // which isn't a save.
+        .sensoryFeedback(.success, trigger: showCopiedConfirmation) { _, new in new }
     }
 
     // MARK: - Save to Apple Notes
 
     private var saveToNotes: some View {
         ShareLink(item: plainText, subject: Text(note.title)) {
-            Label("Save to Apple Notes", systemImage: "square.and.arrow.up")
+            Label("Save to Apple Notes…", systemImage: "square.and.arrow.up")
                 .frame(maxWidth: .infinity)
         }
         .buttonStyle(.borderedProminent)
@@ -64,10 +73,12 @@ public struct SaveActionsBar: View {
         Button {
             copyAsText()
         } label: {
-            Label(
-                showCopiedConfirmation ? "Copied" : "Copy as text",
-                systemImage: showCopiedConfirmation ? "checkmark" : "doc.on.doc"
-            )
+            Label {
+                Text(showCopiedConfirmation ? "Copied" : "Copy as text")
+            } icon: {
+                Image(systemName: showCopiedConfirmation ? "checkmark" : "doc.on.doc")
+                    .symbolEffect(.bounce, value: copyCount)
+            }
             .frame(maxWidth: .infinity)
         }
         .buttonStyle(.bordered)
@@ -79,6 +90,7 @@ public struct SaveActionsBar: View {
         UIPasteboard.general.string = plainText
         record(.copyAsText)
         showCopiedConfirmation = true
+        if !reduceMotion { copyCount += 1 }
         Task {
             try? await Task.sleep(for: .seconds(2))
             showCopiedConfirmation = false
