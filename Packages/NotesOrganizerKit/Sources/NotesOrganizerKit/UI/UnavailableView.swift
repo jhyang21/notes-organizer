@@ -6,8 +6,8 @@ import SwiftUI
 /// forward for each `OrganizeFailure`.
 ///
 /// Every case offers a way forward, and the way forward is specific — "Record
-/// again" when we heard nothing, "See TidyNote Pro" when the month is spent.
-/// A bare "Try again" where trying again can't work would only waste the
+/// Again" when we heard nothing, "See TidyNote Pro" when the month is spent.
+/// A bare "Try Again" where trying again can't work would only waste the
 /// user's time.
 ///
 /// Each action is a closure the caller may not have: a screen with no paywall

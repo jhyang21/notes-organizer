@@ -12,8 +12,6 @@ import SwiftUI
 struct FirstRunScreen: View {
     let onContinue: () -> Void
 
-    private static let privacyPolicyURL = URL(string: "https://jhyang21.github.io/notes-organizer/privacy.html")!
-
     var body: some View {
         VStack(spacing: 24) {
             NoticeView(
@@ -27,7 +25,7 @@ struct FirstRunScreen: View {
                 """)
             )
 
-            Link("Privacy Policy", destination: Self.privacyPolicyURL)
+            Link("Privacy Policy", destination: ExternalLinks.privacyPolicy)
                 .font(.footnote)
 
             Button("Continue", action: onContinue)

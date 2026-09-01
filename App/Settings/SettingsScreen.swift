@@ -32,8 +32,6 @@ struct SettingsScreen: View {
     @State private var versionTaps = 0
 
     private static let tapsToRevealDiagnostics = 5
-    private static let privacyPolicyURL = URL(string: "https://jhyang21.github.io/notes-organizer/privacy.html")!
-    private static let termsURL = URL(string: "https://jhyang21.github.io/notes-organizer/terms.html")!
 
     var body: some View {
         List {
@@ -141,8 +139,8 @@ struct SettingsScreen: View {
             .font(.footnote)
             .foregroundStyle(.secondary)
 
-            Link("Privacy Policy", destination: Self.privacyPolicyURL)
-            Link("Terms of Use", destination: Self.termsURL)
+            Link("Privacy Policy", destination: ExternalLinks.privacyPolicy)
+            Link("Terms of Use", destination: ExternalLinks.terms)
         }
     }
 
