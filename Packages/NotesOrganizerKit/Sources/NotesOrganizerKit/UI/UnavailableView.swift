@@ -40,6 +40,15 @@ public struct UnavailableView: View {
             actions
         }
         .padding()
+        // A dead end is a state a user can land on without any layout change
+        // to draw VoiceOver's attention to it — announce it explicitly rather
+        // than trust focus-follows-layout, which varies by device and OS.
+        // `CaptureFailure` already announces from `CaptureScreen`'s onChange,
+        // so this stays here rather than in `NoticeView` to avoid a double
+        // announcement of the same failure.
+        .onAppear {
+            AccessibilityNotification.Announcement(title).post()
+        }
     }
 
     @ViewBuilder
