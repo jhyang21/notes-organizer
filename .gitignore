@@ -20,3 +20,6 @@ Gemfile.lock
 
 # Supabase CLI machine-local state (linked project ref, caches)
 supabase/.temp/
+
+# Agent worktrees and session state
+.claude/

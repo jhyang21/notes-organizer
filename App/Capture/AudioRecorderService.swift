@@ -14,7 +14,7 @@ import NotesOrganizerKit
 /// one — its name, and when a leftover is stale — live there as
 /// `RecordingFile`.
 @MainActor
-final class AudioRecorderService {
+final class AudioRecorderService: AudioRecording {
     /// `LocalizedError` because the reason goes on a screen: the default
     /// description for a bare Swift error is a type name and a case number,
     /// which is no use to anyone holding a phone.
@@ -28,14 +28,6 @@ final class AudioRecorderService {
             case .startFailed(let reason): reason
             }
         }
-    }
-
-    /// A finished recording: where it is, and how long it ran. The file
-    /// outlives this object — deleting it is the caller's business, because
-    /// the caller is the one that knows whether the note came back.
-    struct Recording {
-        let url: URL
-        let duration: TimeInterval
     }
 
     /// Fired when the OS interrupts the session — a phone call, say. Unlike
@@ -131,13 +123,13 @@ final class AudioRecorderService {
 
     /// Stops recording and hands back the finished file, or `nil` if there was
     /// nothing running. The file stays on disk either way.
-    func stop() -> Recording? {
+    func stop() -> CapturedRecording? {
         guard isRecording, let recorder else { return nil }
         isRecording = false
 
         // `currentTime` reads zero once the recorder has stopped, so the
         // length is taken while it still means something.
-        let recording = Recording(url: recorder.url, duration: recorder.currentTime)
+        let recording = CapturedRecording(url: recorder.url, duration: recorder.currentTime)
         recorder.stop()
         self.recorder = nil
 

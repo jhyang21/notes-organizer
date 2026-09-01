@@ -24,7 +24,7 @@ struct DiagnosticsScreen: View {
                 }
             }
         }
-        .task {
+        .onAppear {
             viewModel.refresh()
         }
     }

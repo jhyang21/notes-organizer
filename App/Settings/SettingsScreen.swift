@@ -15,7 +15,12 @@ struct SettingsScreen: View {
     @State private var remaining: Int?
     @State private var isShowingPaywall = false
     @State private var isRestoring = false
+    /// The last restore's answer, and whether its alert is up. Two pieces of
+    /// state rather than one because the alert reads its title while it
+    /// animates away: clearing the outcome on dismissal blanked the title on
+    /// the way out.
     @State private var restoreOutcome: RestoreOutcome?
+    @State private var isShowingRestoreOutcome = false
 
     @Environment(\.openURL) private var openURL
 
@@ -42,14 +47,14 @@ struct SettingsScreen: View {
         }
         .alert(
             restoreOutcome?.title ?? "",
-            isPresented: isShowingRestoreOutcome,
+            isPresented: $isShowingRestoreOutcome,
             presenting: restoreOutcome
         ) { _ in
             Button("OK") {}
         } message: { outcome in
             Text(outcome.message)
         }
-        .task {
+        .onAppear {
             refresh()
         }
     }
@@ -144,7 +149,7 @@ struct SettingsScreen: View {
             let customerInfo = try await Purchases.shared.restorePurchases()
             EntitlementStore.shared.recordIsPro(customerInfo.isPro)
             refresh()
-            restoreOutcome = customerInfo.isPro
+            present(customerInfo.isPro
                 ? RestoreOutcome(
                     title: "Purchases restored",
                     message: "TidyNote Pro is active on this iPhone."
@@ -152,24 +157,18 @@ struct SettingsScreen: View {
                 : RestoreOutcome(
                     title: "Nothing to restore",
                     message: "We didn't find a TidyNote Pro subscription on this Apple Account."
-                )
+                ))
         } catch {
-            restoreOutcome = RestoreOutcome(
+            present(RestoreOutcome(
                 title: "Couldn't restore",
                 message: error.localizedDescription
-            )
+            ))
         }
     }
 
-    /// The alert reads its text from the outcome and its presence from
-    /// whether there is one, so there is a single piece of state to get wrong.
-    private var isShowingRestoreOutcome: Binding<Bool> {
-        Binding(
-            get: { restoreOutcome != nil },
-            set: { isPresented in
-                if !isPresented { restoreOutcome = nil }
-            }
-        )
+    private func present(_ outcome: RestoreOutcome) {
+        restoreOutcome = outcome
+        isShowingRestoreOutcome = true
     }
 
     private struct RestoreOutcome {

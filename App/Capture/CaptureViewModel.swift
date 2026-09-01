@@ -13,10 +13,10 @@ enum CaptureFailure: Equatable {
 }
 
 /// Drives the capture flow end to end: idle → requestingPermissions →
-/// recording → uploading → organizing → preview, or failed at any step. Owns
-/// `AudioRecorderService`; `OrganizeRouting` supplies the organizer, so tests
-/// and previews swap in a `MockOrganizer` by handing over a routing built
-/// around one.
+/// recording → uploading → organizing → preview, or failed at any step. The
+/// microphone arrives as an `AudioRecording` and the organizer as an
+/// `OrganizeRouting`, so tests and previews swap in a scripted recorder and a
+/// `MockOrganizer` rather than needing hardware.
 ///
 /// The recording is a file, and the file is kept until a note comes back.
 /// That is what makes "Try again" mean try again rather than say it all
@@ -56,10 +56,11 @@ final class CaptureViewModel {
     private let routing: OrganizeRouting
     private let log: DiagnosticsLog
     private let locale: Locale
-    private let recorder: AudioRecorderService
+    private let recorder: any AudioRecording
+    private let silence: SilenceDetector.Configuration
     private let clock = ContinuousClock()
 
-    private var silenceDetector = SilenceDetector()
+    private var silenceDetector: SilenceDetector
     private var lifecycleTask: Task<Void, Never>?
     private var organizeTask: Task<Void, Never>?
     private var levelTask: Task<Void, Never>?
@@ -68,22 +69,31 @@ final class CaptureViewModel {
     /// user actually said instead of throwing it away and asking them to say
     /// it again; deleted the moment a note comes back, or the moment they walk
     /// away from it.
-    private var recording: AudioRecorderService.Recording?
+    private var recording: CapturedRecording?
     /// Set once the user has read the first-run screen, so a device where the
     /// App Group write goes nowhere asks once rather than forever.
     private var hasGrantedConsentThisSession = false
 
+    /// - Parameters:
+    ///   - recorder: the microphone. Injected for the same reason `routing`
+    ///     is — a CI simulator has neither one.
+    ///   - silence: when a recording stops itself. Injected so a test can
+    ///     reach the auto-stop without waiting ten seconds for it.
     init(
         routing: OrganizeRouting = OrganizeRouting(),
         log: DiagnosticsLog = .shared,
-        locale: Locale = .current
+        locale: Locale = .current,
+        recorder: any AudioRecording = AudioRecorderService(),
+        silence: SilenceDetector.Configuration = .default
     ) {
         self.routing = routing
         self.log = log
         self.locale = locale
-        self.recorder = AudioRecorderService()
+        self.recorder = recorder
+        self.silence = silence
+        self.silenceDetector = SilenceDetector(configuration: silence)
 
-        recorder.onInterrupted = { [weak self] in
+        self.recorder.onInterrupted = { [weak self] in
             self?.finishRecording()
         }
     }
@@ -151,7 +161,7 @@ final class CaptureViewModel {
             delete(interrupted)
         }
         discardRecording()
-        silenceDetector = SilenceDetector()
+        silenceDetector = SilenceDetector(configuration: silence)
         state = .idle
     }
 
@@ -188,7 +198,7 @@ final class CaptureViewModel {
     }
 
     private func beginRecording() {
-        silenceDetector = SilenceDetector()
+        silenceDetector = SilenceDetector(configuration: silence)
         let startedAt = clock.now
 
         let levels: AsyncStream<Float>
@@ -208,7 +218,10 @@ final class CaptureViewModel {
         levelTask = Task { [weak self] in
             guard let self else { return }
             for await level in levels {
-                guard case .recording = self.state else { continue }
+                // Anything that ends a recording leaves `.recording` first, so
+                // a state that isn't `.recording` means this loop's work is
+                // over — not that this one sample should be skipped.
+                guard case .recording = self.state else { break }
                 let elapsed = self.clock.now - startedAt
                 self.state = .recording(level: level, elapsed: elapsed)
 
@@ -282,7 +295,7 @@ final class CaptureViewModel {
         routing.route(consentGrantedThisSession: hasGrantedConsentThisSession)
     }
 
-    private func run(_ recording: AudioRecorderService.Recording) async {
+    private func run(_ recording: CapturedRecording) async {
         // `reset()` between scheduling this task and its first line would
         // otherwise leave a spinner on a screen that's back at idle.
         guard !Task.isCancelled else { return }
@@ -323,7 +336,7 @@ final class CaptureViewModel {
         recording = nil
     }
 
-    private func delete(_ recording: AudioRecorderService.Recording) {
+    private func delete(_ recording: CapturedRecording) {
         try? FileManager.default.removeItem(at: recording.url)
     }
 }

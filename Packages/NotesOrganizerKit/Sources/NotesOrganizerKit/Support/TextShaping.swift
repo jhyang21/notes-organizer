@@ -1,8 +1,8 @@
 import Foundation
 
-/// The small text operations the formatter, the sanitizer, the chunker, and
-/// the filename builder all need. One definition each, so a note's title,
-/// its headings, and its filename are cut and collapsed the same way.
+/// The small text operations the sanitizer needs. One definition each, so a
+/// note's title, its headings, and its bullets are cut and collapsed the same
+/// way.
 ///
 /// The length limits stay with their callers: each is an independent limit
 /// that happens to agree with the others today.
@@ -26,27 +26,5 @@ enum TextShaping {
             .components(separatedBy: .whitespacesAndNewlines)
             .filter { !$0.isEmpty }
             .joined(separator: " ")
-    }
-
-    /// Blank-line separated paragraphs, trimmed, with empties dropped.
-    static func paragraphs(in text: String) -> [String] {
-        text
-            .components(separatedBy: "\n\n")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-    }
-
-    /// Sentences per the system's locale-aware tokenizer, trimmed, with
-    /// empties dropped. Empty when the text has no sentence boundaries.
-    static func sentences(in text: String) -> [String] {
-        var result: [String] = []
-        text.enumerateSubstrings(in: text.startIndex..<text.endIndex, options: [.bySentences, .localized]) { substring, _, _, _ in
-            guard let substring else { return }
-            let trimmed = substring.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !trimmed.isEmpty {
-                result.append(trimmed)
-            }
-        }
-        return result
     }
 }
