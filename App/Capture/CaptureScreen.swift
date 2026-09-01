@@ -12,6 +12,7 @@ struct CaptureScreen: View {
     @Environment(PlanModel.self) private var plan
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(viewModel: CaptureViewModel = CaptureViewModel()) {
         _viewModel = State(initialValue: viewModel)
@@ -23,34 +24,43 @@ struct CaptureScreen: View {
                 switch viewModel.state {
                 case .idle:
                     idleView
+                        .transition(stateTransition)
                 case .requestingPermissions:
                     statusView(message: "Requesting microphone access…")
+                        .transition(stateTransition)
                 case .recording(let level, let elapsed):
                     recordingView(level: level, elapsed: elapsed)
+                        .transition(stateTransition)
                 case .uploading:
                     sendingView(message: "Sending your recording…")
+                        .transition(stateTransition)
                 case .organizing:
                     sendingView(message: "Turning it into a note…")
+                        .transition(stateTransition)
                 case .readyToSend(let duration):
                     readyToSendView(duration: duration)
+                        .transition(stateTransition)
                 case .preview(let note):
                     previewView(note: note)
+                        .transition(stateTransition)
                 case .failed(let failure):
                     captureFailureView(failure: failure)
+                        .transition(stateTransition)
                 case .unavailable(let failure):
                     UnavailableView(
                         failure: failure,
                         onRetry: { viewModel.retry() },
                         onUpgrade: { isShowingPaywall = true }
                     )
+                    .transition(stateTransition)
                 }
             }
             .padding()
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .animation(.default, value: viewModel.state)
-            // An empty inline title keeps the bar out of the way; the capture
-            // screen names itself.
-            .navigationBarTitleDisplayMode(.inline)
+            .animation(reduceMotion ? nil : .default, value: viewModel.state)
+            .sensoryFeedback(trigger: viewModel.state, captureFeedback)
+            .navigationTitle("TidyNote")
+            .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink {
@@ -98,13 +108,51 @@ struct CaptureScreen: View {
         }
     }
 
+    // MARK: - Motion and haptics
+
+    /// A state change reads as a cross-fade with Reduce Motion off, and as an
+    /// instant swap with it on — `.identity` isn't "no transition", it's the
+    /// plain one.
+    private var stateTransition: AnyTransition {
+        reduceMotion ? .identity : .opacity
+    }
+
+    /// One haptic per state change that means something, not one per tick of
+    /// the meter: entering `.recording` (from anywhere else) is the only
+    /// `.impact`, leaving it for `.uploading` or `.readyToSend` is the "you
+    /// said stop and it heard you" `.success` — auto-stop and the hard cap
+    /// both route through the same transition, so they get the same feedback.
+    /// A screen that arrives already showing a note (a restored draft) gets
+    /// the same `.success` a freshly organized one does; there is nothing
+    /// user-visible to tell them apart from.
+    private func captureFeedback(
+        from old: CaptureViewModel.State,
+        to new: CaptureViewModel.State
+    ) -> SensoryFeedback? {
+        switch (old, new) {
+        case (.recording, .recording):
+            return nil
+        case (.recording, .uploading), (.recording, .readyToSend):
+            return .success
+        case (_, .recording):
+            return .impact
+        case (.failed, .failed), (.unavailable, .unavailable):
+            return nil
+        case (_, .failed), (_, .unavailable):
+            return .error
+        case (.preview, .preview):
+            return nil
+        case (_, .preview):
+            return .success
+        default:
+            return nil
+        }
+    }
+
     // MARK: - States
 
     private var idleView: some View {
         VStack(spacing: 24) {
-            Text("TidyNote")
-                .font(.largeTitle.bold())
-
             Button {
                 viewModel.startCapture()
             } label: {
@@ -215,10 +263,13 @@ struct CaptureScreen: View {
                 .foregroundStyle(.tertiary)
                 .multilineTextAlignment(.center)
 
-            Button("Stop", role: .destructive) {
+            Button {
                 viewModel.stopRecording()
+            } label: {
+                Label("Stop", systemImage: "stop.fill")
             }
             .buttonStyle(.borderedProminent)
+            .controlSize(.large)
         }
     }
 
