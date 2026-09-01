@@ -4,6 +4,7 @@ default_platform(:ios)
 
 APP_IDENTIFIER = "com.immform.notesorganizer"
 SHARE_EXTENSION_IDENTIFIER = "com.immform.notesorganizer.share"
+WIDGETS_IDENTIFIER = "com.immform.notesorganizer.widgets"
 
 platform :ios do
   desc "Build and upload a TestFlight beta"
@@ -37,7 +38,8 @@ platform :ios do
       export_options: {
         provisioningProfiles: {
           APP_IDENTIFIER => ENV["sigh_#{APP_IDENTIFIER}_appstore_profile-name"],
-          SHARE_EXTENSION_IDENTIFIER => ENV["sigh_#{SHARE_EXTENSION_IDENTIFIER}_appstore_profile-name"]
+          SHARE_EXTENSION_IDENTIFIER => ENV["sigh_#{SHARE_EXTENSION_IDENTIFIER}_appstore_profile-name"],
+          WIDGETS_IDENTIFIER => ENV["sigh_#{WIDGETS_IDENTIFIER}_appstore_profile-name"]
         }
       }
     )

@@ -2,4 +2,11 @@ git_url("https://github.com/jhyang21/notes-organizer-certificates")
 storage_mode("git")
 type("appstore")
 
-app_identifier(["com.immform.notesorganizer", "com.immform.notesorganizer.share"])
+app_identifier([
+  "com.immform.notesorganizer",
+  "com.immform.notesorganizer.share",
+  # The widgets App ID must exist in the developer portal, with the App Groups
+  # capability, before match can mint this one. match creates profiles, not
+  # App IDs with capabilities.
+  "com.immform.notesorganizer.widgets"
+])
