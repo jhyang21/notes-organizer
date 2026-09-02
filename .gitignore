@@ -23,3 +23,6 @@ supabase/.temp/
 
 # Agent worktrees and session state
 .claude/
+
+# Live smoke-run outputs (real model calls, regenerated on demand)
+supabase/functions/tidynote_organize/smoke/out/
