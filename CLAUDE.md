@@ -92,7 +92,10 @@ repo below).
 Certificates and provisioning profiles live in a separate private repo,
 `https://github.com/jhyang21/notes-organizer-certificates`, managed
 headlessly by fastlane `match` — nothing there is created or edited by
-hand.
+hand. Since 2026-09-01 that repo is **shared with the Relora iOS app**
+(`jhyang21/relora-ios`): both pipelines use the team's one Apple
+Distribution certificate. A `match nuke` or a `MATCH_PASSWORD` rotation
+here breaks both apps.
 
 `match` mints profiles; it does not create App IDs with capabilities. A
 new target's bundle ID has to be registered in the developer portal
