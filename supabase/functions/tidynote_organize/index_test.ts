@@ -432,7 +432,8 @@ Deno.test('the upstream request carries the model and wraps the text with its so
   assertEquals(call.url, 'https://api.openai.com/v1/chat/completions');
   const sent = JSON.parse(String(call.init?.body));
   assertEquals(sent.model, 'gpt-4o-mini');
-  assertEquals(sent.messages[1].content, '<note source="shared">\ncall the dentist\n</note>');
+  assertEquals(sent.messages[1].content, 'call the dentist');
+  assert(sent.messages[0].content.includes('shared from Apple Notes'));
   // A model outside the reasoning families takes the low temperature.
   assertEquals(sent.temperature, 0.2);
 });
@@ -549,7 +550,8 @@ Deno.test('a voice tidy charges once, then organizes what Whisper heard', async 
   assertEquals(calls.fetch[0].url, 'https://api.openai.com/v1/audio/transcriptions');
   assertEquals(calls.fetch[1].url, 'https://api.openai.com/v1/chat/completions');
   const sent = JSON.parse(String(calls.fetch[1].init?.body));
-  assertEquals(sent.messages[1].content, `<note source="voice">\n${TRANSCRIPT}\n</note>`);
+  assertEquals(sent.messages[1].content, TRANSCRIPT);
+  assert(sent.messages[0].content.includes('transcript of a voice recording'));
 });
 
 Deno.test('the Whisper request carries the file, the model, plain text and the style prompt', async () => {
