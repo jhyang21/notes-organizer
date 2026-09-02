@@ -90,7 +90,7 @@ Actions), all set 2026-08-08: `ASC_KEY_ID`, `ASC_ISSUER_ID`,
 repo below).
 
 Certificates and provisioning profiles live in a separate private repo,
-`https://github.com/jhyang21/notes-organizer-certificates`, managed
+`https://github.com/jhyang21/ios-certificates`, managed
 headlessly by fastlane `match` — nothing there is created or edited by
 hand. Since 2026-09-01 that repo is **shared with the Relora iOS app**
 (`jhyang21/relora-ios`): both pipelines use the team's one Apple
