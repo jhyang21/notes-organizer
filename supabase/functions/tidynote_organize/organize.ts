@@ -8,32 +8,32 @@
 // `organizeText`. Each step is exported separately so tests can drive them one
 // at a time.
 
-import { PROMPT_VERSION, PROMPTS } from "./prompt.ts";
+import { PROMPT_VERSION, PROMPTS } from './prompt.ts';
 
 // ---------------------------------------------------------------------------
 // Schema-level vocabulary
 // ---------------------------------------------------------------------------
 
 export const SECTION_KINDS = [
-  "paragraph",
-  "bullets",
-  "checklist",
-  "numbered",
-  "verbatim",
+  'paragraph',
+  'bullets',
+  'checklist',
+  'numbered',
+  'verbatim',
 ] as const;
 export type SectionKind = typeof SECTION_KINDS[number];
 
 export const NOTE_KINDS = [
-  "journal",
-  "meeting",
-  "tasks",
-  "list",
-  "reference",
-  "howto",
-  "idea",
-  "draft",
-  "study",
-  "mixed",
+  'journal',
+  'meeting',
+  'tasks',
+  'list',
+  'reference',
+  'howto',
+  'idea',
+  'draft',
+  'study',
+  'mixed',
 ] as const;
 
 export const LEVELS = [0, 1, 2, 3, 4] as const;
@@ -71,7 +71,7 @@ export type ParsedNote = OrganizedNote & { classification: Classification };
 /** Which door the text came in through. Told to the model so it can weigh a
  * voice ramble and a pasted note differently; never itself a fact in the
  * output. */
-export type NoteSource = "voice" | "shared";
+export type NoteSource = 'voice' | 'shared';
 
 // ---------------------------------------------------------------------------
 // Structured-output schema
@@ -83,62 +83,62 @@ export type NoteSource = "voice" | "shared";
 // what OpenAI's strict structured outputs mode demands.
 
 export const NOTE_JSON_SCHEMA = {
-  name: "organized_note",
+  name: 'organized_note',
   strict: true,
   schema: {
-    type: "object",
+    type: 'object',
     additionalProperties: false,
-    required: ["noteKind", "level", "title", "summary", "sections"],
+    required: ['noteKind', 'level', 'title', 'summary', 'sections'],
     properties: {
       noteKind: {
-        type: "string",
+        type: 'string',
         enum: NOTE_KINDS,
-        description: "What kind of note the input is. Decide this first.",
+        description: 'What kind of note the input is. Decide this first.',
       },
       level: {
-        type: "integer",
+        type: 'integer',
         enum: LEVELS,
         description:
-          "How much to change the note: 0 keep as written, 1 clean whitespace and markers, 2 group and order, 3 also cut filler, 4 condense prose into bullets and add a short lead summary. Never lose a fact.",
+          'How much to change the note: 0 keep as written, 1 clean whitespace and markers, 2 group and order, 3 also cut filler, 4 condense prose into bullets and add a short lead summary. Never lose a fact.',
       },
       title: {
-        type: "string",
-        description: "Short and specific, 3-8 words. Never generic.",
+        type: 'string',
+        description: 'Short and specific, 3-8 words. Never generic.',
       },
       summary: {
-        type: "string",
+        type: 'string',
         description:
-          "Empty string unless level is 4. One or two sentences that add a lead; never repeats the sections.",
+          'Empty string unless level is 4. One or two sentences that add a lead; never repeats the sections.',
       },
       sections: {
-        type: "array",
+        type: 'array',
         items: {
-          type: "object",
+          type: 'object',
           additionalProperties: false,
-          required: ["heading", "kind", "items"],
+          required: ['heading', 'kind', 'items'],
           properties: {
             heading: {
-              type: "string",
-              description: "1-4 words, or empty when no label helps",
+              type: 'string',
+              description: '1-4 words, or empty when no label helps',
             },
             kind: {
-              type: "string",
+              type: 'string',
               enum: SECTION_KINDS,
               description:
-                "paragraph = prose, one item per paragraph; bullets = unordered points; checklist = tasks with a done state; numbered = ordered steps; verbatim = lines reproduced exactly: codes, passwords, addresses, Wi-Fi details, URLs, commands, quotes.",
+                'paragraph = prose, one item per paragraph; bullets = unordered points; checklist = tasks with a done state; numbered = ordered steps; verbatim = lines reproduced exactly: codes, passwords, addresses, Wi-Fi details, URLs, commands, quotes.',
             },
             items: {
-              type: "array",
+              type: 'array',
               items: {
-                type: "object",
+                type: 'object',
                 additionalProperties: false,
-                required: ["text", "done"],
+                required: ['text', 'done'],
                 properties: {
-                  text: { type: "string" },
+                  text: { type: 'string' },
                   done: {
-                    type: "boolean",
+                    type: 'boolean',
                     description:
-                      "Only meaningful when kind is checklist; otherwise false",
+                      'Only meaningful when kind is checklist; otherwise false',
                   },
                 },
               },
@@ -155,7 +155,7 @@ export const NOTE_JSON_SCHEMA = {
 // ---------------------------------------------------------------------------
 
 export interface OrganizeMessage {
-  role: "system" | "user";
+  role: 'system' | 'user';
   content: string;
 }
 
@@ -163,7 +163,7 @@ export interface OrganizeRequest {
   model: string;
   messages: OrganizeMessage[];
   response_format: {
-    type: "json_schema";
+    type: 'json_schema';
     json_schema: typeof NOTE_JSON_SCHEMA;
   };
   temperature?: number;
@@ -171,7 +171,7 @@ export interface OrganizeRequest {
 
 /** gpt-5 and o-series reject any temperature but the default. The model is
  * env-swappable, so decide per request rather than assuming one family. */
-export function supportsTemperature(model: string): boolean {
+function supportsTemperature(model: string): boolean {
   return !/^(gpt-5|o\d)/i.test(model);
 }
 
@@ -187,13 +187,13 @@ export function buildOrganizeRequest(
   const request: OrganizeRequest = {
     model,
     messages: [
-      { role: "system", content: systemPrompt },
+      { role: 'system', content: systemPrompt },
       {
-        role: "user",
+        role: 'user',
         content: `<note source="${opts.source}">\n${text}\n</note>`,
       },
     ],
-    response_format: { type: "json_schema", json_schema: NOTE_JSON_SCHEMA },
+    response_format: { type: 'json_schema', json_schema: NOTE_JSON_SCHEMA },
   };
   if (supportsTemperature(model)) request.temperature = 0.2;
   return request;
@@ -203,35 +203,38 @@ export function buildOrganizeRequest(
 // The OpenAI call
 // ---------------------------------------------------------------------------
 
-export const OPENAI_TIMEOUT_MS = 60_000;
+const OPENAI_TIMEOUT_MS = 60_000;
+
+/** The OpenAI `usage` block, as far as the handler's log line cares. */
+export interface TokenUsage {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+}
 
 export interface OrganizeCompletion {
   content: string;
-  model: string;
-  usage?: unknown;
+  usage?: TokenUsage;
 }
 
-/** Fetch + timeout + one temperature retry. Behavior is carried over verbatim
- * from the handler's old `organize()`: if OpenAI rejects `temperature`, retry
- * once without it rather than treating a model swap as a code change. */
+/** Fetch, timeout, and one temperature retry. */
 export async function completeOrganize(
   fetchImpl: typeof fetch,
   apiKey: string,
   request: OrganizeRequest,
-  timeoutMs: number = OPENAI_TIMEOUT_MS,
 ): Promise<OrganizeCompletion> {
   const body: Record<string, unknown> = { ...request };
 
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
 
   try {
     let response = await fetchImpl(
-      "https://api.openai.com/v1/chat/completions",
+      'https://api.openai.com/v1/chat/completions',
       {
-        method: "POST",
+        method: 'POST',
         headers: {
-          "Content-Type": "application/json",
+          'Content-Type': 'application/json',
           Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify(body),
@@ -244,14 +247,14 @@ export async function completeOrganize(
     // without it rather than making the swap a code change.
     if (response.status === 400 && body.temperature !== undefined) {
       const detail = await response.text();
-      if (detail.toLowerCase().includes("temperature")) {
+      if (detail.toLowerCase().includes('temperature')) {
         delete body.temperature;
         response = await fetchImpl(
-          "https://api.openai.com/v1/chat/completions",
+          'https://api.openai.com/v1/chat/completions',
           {
-            method: "POST",
+            method: 'POST',
             headers: {
-              "Content-Type": "application/json",
+              'Content-Type': 'application/json',
               Authorization: `Bearer ${apiKey}`,
             },
             body: JSON.stringify(body),
@@ -272,16 +275,12 @@ export async function completeOrganize(
 
     const payload = await response.json();
     const message = payload?.choices?.[0]?.message;
-    if (message?.refusal) throw new Error("model refused the transcript");
+    if (message?.refusal) throw new Error('model refused the transcript');
     const content = message?.content;
-    if (typeof content !== "string" || content.length === 0) {
-      throw new Error("empty completion content");
+    if (typeof content !== 'string' || content.length === 0) {
+      throw new Error('empty completion content');
     }
-    return {
-      content,
-      model: typeof payload?.model === "string" ? payload.model : request.model,
-      usage: payload?.usage,
-    };
+    return { content, usage: payload?.usage };
   } finally {
     clearTimeout(timer);
   }
@@ -292,7 +291,7 @@ export async function completeOrganize(
 // ---------------------------------------------------------------------------
 
 function isSectionKind(value: unknown): value is SectionKind {
-  return typeof value === "string" &&
+  return typeof value === 'string' &&
     (SECTION_KINDS as readonly string[]).includes(value);
 }
 
@@ -303,32 +302,32 @@ function isSectionKind(value: unknown): value is SectionKind {
 export function parseNote(raw: string): ParsedNote {
   const parsed = JSON.parse(raw) as Record<string, unknown>;
   if (!Array.isArray(parsed.sections)) {
-    throw new Error("missing sections array");
+    throw new Error('missing sections array');
   }
 
-  const level = typeof parsed.level === "number" &&
+  const level = typeof parsed.level === 'number' &&
       (LEVELS as readonly number[]).includes(parsed.level)
     ? parsed.level
     : -1;
-  const noteKind = typeof parsed.noteKind === "string"
+  const noteKind = typeof parsed.noteKind === 'string'
     ? parsed.noteKind
-    : "unknown";
-  const title = typeof parsed.title === "string" ? parsed.title : "";
-  const summary = typeof parsed.summary === "string" ? parsed.summary : "";
+    : 'unknown';
+  const title = typeof parsed.title === 'string' ? parsed.title : '';
+  const summary = typeof parsed.summary === 'string' ? parsed.summary : '';
 
   const sections: NoteSection[] = parsed.sections.map((section) => {
     const value = (section ?? {}) as Record<string, unknown>;
-    const heading = typeof value.heading === "string" ? value.heading : "";
+    const heading = typeof value.heading === 'string' ? value.heading : '';
     const kind: SectionKind = isSectionKind(value.kind)
       ? value.kind
-      : "bullets";
+      : 'bullets';
     const rawItems = Array.isArray(value.items) ? value.items : [];
     const items: NoteItem[] = rawItems.map((item) => {
-      if (typeof item === "string") return { text: item, done: false };
+      if (typeof item === 'string') return { text: item, done: false };
       const itemValue = (item ?? {}) as Record<string, unknown>;
       return {
-        text: typeof itemValue.text === "string" ? itemValue.text : "",
-        done: typeof itemValue.done === "boolean" ? itemValue.done : false,
+        text: typeof itemValue.text === 'string' ? itemValue.text : '',
+        done: typeof itemValue.done === 'boolean' ? itemValue.done : false,
       };
     });
     return { heading, kind, items };
@@ -352,7 +351,7 @@ const TRAILING_PUNCTUATION_RE = /[.!;:,]+$/;
  * and the result is trimmed. Mirrors `TextShaping.collapseWhitespace` in
  * NotesOrganizerKit. */
 function collapseWhitespace(text: string): string {
-  return text.split(/\s+/).filter((part) => part.length > 0).join(" ");
+  return text.split(/\s+/).filter((part) => part.length > 0).join(' ');
 }
 
 /** Cuts `text` to `maxLength` characters at the last word boundary within
@@ -361,7 +360,7 @@ function collapseWhitespace(text: string): string {
 function truncateAtWordBoundary(text: string, maxLength: number): string {
   if (text.length <= maxLength) return text;
   const truncated = text.slice(0, maxLength);
-  const lastSpace = truncated.lastIndexOf(" ");
+  const lastSpace = truncated.lastIndexOf(' ');
   return lastSpace >= 0 ? truncated.slice(0, lastSpace) : truncated;
 }
 
@@ -369,15 +368,15 @@ function truncateAtWordBoundary(text: string, maxLength: number): string {
  * normalize width and case, drop one leading list marker and any trailing
  * punctuation, collapse whitespace. */
 export function dedupKey(text: string): string {
-  let key = text.normalize("NFKC").toLowerCase();
-  key = key.replace(LEADING_MARKER_RE, "");
-  key = key.replace(TRAILING_PUNCTUATION_RE, "");
-  key = key.replace(/\s+/g, " ").trim();
+  let key = text.normalize('NFKC').toLowerCase();
+  key = key.replace(LEADING_MARKER_RE, '');
+  key = key.replace(TRAILING_PUNCTUATION_RE, '');
+  key = key.replace(/\s+/g, ' ').trim();
   return key;
 }
 
 function wordCount(key: string): number {
-  return key.length === 0 ? 0 : key.split(" ").length;
+  return key.length === 0 ? 0 : key.split(' ').length;
 }
 
 interface ItemRef {
@@ -391,7 +390,7 @@ export function sanitizeNote(note: OrganizedNote): OrganizedNote {
   const title = collapseWhitespace(note.title);
   let summary = collapseWhitespace(note.summary);
   if (summary.length > 0 && summary.toLowerCase() === title.toLowerCase()) {
-    summary = "";
+    summary = '';
   }
 
   const sections: NoteSection[] = note.sections.map((section) => {
@@ -400,9 +399,9 @@ export function sanitizeNote(note: OrganizedNote): OrganizedNote {
       MAX_HEADING_CHARS,
     );
 
-    if (section.kind === "verbatim") {
+    if (section.kind === 'verbatim') {
       const items = section.items.map((item) => ({
-        text: item.text.replace(/\r/g, ""),
+        text: item.text.replace(/\r/g, ''),
         done: false,
       }));
       let start = 0;
@@ -414,7 +413,7 @@ export function sanitizeNote(note: OrganizedNote): OrganizedNote {
       return { heading, kind: section.kind, items: items.slice(start, end) };
     }
 
-    const isChecklist = section.kind === "checklist";
+    const isChecklist = section.kind === 'checklist';
     const cleaned: NoteItem[] = [];
     let previousKey: string | null = null;
     for (const item of section.items) {
@@ -433,7 +432,7 @@ export function sanitizeNote(note: OrganizedNote): OrganizedNote {
   // survive. Verbatim sections never participate either.
   const refs: ItemRef[] = [];
   sections.forEach((section, sectionIndex) => {
-    if (section.kind === "verbatim") return;
+    if (section.kind === 'verbatim') return;
     section.items.forEach((item, itemIndex) => {
       const key = dedupKey(item.text);
       if (wordCount(key) < GLOBAL_DEDUP_MIN_WORDS) return;
@@ -454,17 +453,17 @@ export function sanitizeNote(note: OrganizedNote): OrganizedNote {
   // is no "first occurrence wins" pass among non-checklist sections.
   const drop = new Set<string>(); // "sectionIndex:itemIndex"
   for (const occurrences of byKey.values()) {
-    const hasChecklist = occurrences.some((ref) => ref.kind === "checklist");
+    const hasChecklist = occurrences.some((ref) => ref.kind === 'checklist');
     if (!hasChecklist) continue;
     for (const ref of occurrences) {
-      if (ref.kind !== "checklist") {
+      if (ref.kind !== 'checklist') {
         drop.add(`${ref.sectionIndex}:${ref.itemIndex}`);
       }
     }
   }
 
   const deduped: NoteSection[] = sections.map((section, sectionIndex) => {
-    if (section.kind === "verbatim") return section;
+    if (section.kind === 'verbatim') return section;
     const items = section.items.filter((_, itemIndex) =>
       !drop.has(`${sectionIndex}:${itemIndex}`)
     );
@@ -485,8 +484,7 @@ export function sanitizeNote(note: OrganizedNote): OrganizedNote {
 export interface OrganizeResult {
   note: OrganizedNote;
   classification: Classification;
-  model: string;
-  usage?: unknown;
+  usage?: TokenUsage;
 }
 
 export async function organizeText(
@@ -495,9 +493,8 @@ export async function organizeText(
   text: string,
   model: string,
   source: NoteSource,
-  promptVersion?: string,
 ): Promise<OrganizeResult> {
-  const request = buildOrganizeRequest(text, model, { source, promptVersion });
+  const request = buildOrganizeRequest(text, model, { source });
   const completion = await completeOrganize(fetchImpl, apiKey, request);
   const parsed = parseNote(completion.content);
   const note = sanitizeNote({
@@ -508,7 +505,6 @@ export async function organizeText(
   return {
     note,
     classification: parsed.classification,
-    model: completion.model,
     usage: completion.usage,
   };
 }
