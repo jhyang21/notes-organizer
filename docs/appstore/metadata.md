@@ -89,39 +89,35 @@ appear in the description.
 
 ```
 NO ACCOUNT - NOTHING TO DEMO-LOGIN
-TidyNote has no sign-up, no login, and no password. Please leave the demo account fields empty; there is genuinely nothing to sign in to. On first launch the app generates a random anonymous identifier (a string like "tidy:<UUID>") and uses it only to count tidies and to look up subscription status. It is not tied to a name, an email, a device identifier, or an advertising identifier.
+TidyNote has no sign-up, no login, and no password. Please leave the demo account fields empty. On first launch the app generates a random anonymous identifier ("tidy:<UUID>") and uses it only to count tidies and look up subscription status. It is not tied to a name, email, device identifier, or advertising identifier.
 
 EVERY TIDY IS A SERVER CALL
-Nothing is organized offline; the app does all of it over the network. It records audio on the iPhone, uploads the recording over HTTPS to our endpoint, and our provider turns it into text and organizes it; the finished note comes back to the phone. Text shared into the app takes the same route without the transcription step. We store neither the recording nor the text. The free plan allows 5 tidies per calendar month; TidyNote Pro removes the cap. The review device needs a network connection.
-
-THE FREE LIMIT IS ENFORCED ON THE SERVER
-The 5-per-month cap is not a client-side check. The server keeps the counter against the anonymous identifier and returns HTTP 429 (quota_exhausted) on the 6th tidy, at which point the app shows the "You've used this month's tidies" screen with the TidyNote Pro upsell.
+Nothing is organized offline. The app records audio, uploads it over HTTPS, and our provider turns it into text and organizes it; the note comes back to the phone. Shared text takes the same route without transcription. We store neither the recording nor the text. The free plan's 5-tidies-a-month cap is enforced on the server, which returns HTTP 429 on the 6th tidy; the app then shows the "You've used this month's tidies" screen with the TidyNote Pro upsell. The review device needs a network connection.
 
 HOW TO TEST A SUBSCRIPTION IN SANDBOX
-1. Open the app and tap the gear icon (top right of the capture screen) to reach Settings.
-2. Tap "Go Pro" to open the paywall. Buy either the monthly or the annual product with a sandbox Apple Account. The 7-day free trial applies.
-3. Settings should now read "TidyNote Pro" with "Tidies are unlimited."
-4. Go back, record a short voice note (or share text in, see below), and let it finish.
-5. "Restore Purchases" in Settings re-applies the entitlement. "Manage Subscription" opens the system subscription sheet in place; it does not leave the app.
-To exercise the free path instead, use a fresh install without purchasing: Settings reads "Tidies left this month: N", the capture screen says the same count under the microphone, and both drop by one with each tidy.
+1. Tap the gear icon (top right) to reach Settings.
+2. Tap "Go Pro" and buy either product with a sandbox Apple Account; the 7-day trial applies. Settings now reads "TidyNote Pro" with "Tidies are unlimited."
+3. Record a short voice note (or share text in, see below) and let it finish.
+4. "Restore Purchases" re-applies the entitlement; "Manage Subscription" opens the system sheet in place.
+Without purchasing, Settings and the capture screen both show the tidies left this month, dropping by one per tidy.
 
 DIAGNOSTICS IS HIDDEN
-Settings ends with a version line ("TidyNote 1.0.0 (N)"). Tapping it five times reveals a Diagnostics row - an internal log of what the app did on this device, kept for TestFlight testers to read back to us. It stays on the device, is never transmitted, and is not part of the product. Nothing else is behind it.
+Settings ends with a version line; tapping it five times reveals a Diagnostics row - an on-device log for TestFlight testers. It never leaves the device and is not part of the product.
 
 SHARE EXTENSION
-TidyNote also appears in the iOS share sheet for text. Open the TidyNote app once before testing it - the first run shows a one-time screen that explains what gets sent and asks you to agree, and the extension only works after that. Then: open Apple Notes (or any app with text), share the note or selected text, choose TidyNote from the share sheet, and the extension shows the organized version. It never writes back to the note you shared: to keep the result, tap "Save to Apple Notes", which opens the share sheet again and saves the organized text as a new note. The extension has no purchase UI - StoreKit purchases are not viable inside a share extension - so if the free quota is exhausted there it says "Open TidyNote to go Pro" instead - or offers a button that hands the user to the app, on hosts where a share extension is allowed to open a URL at all. The app's home screen has a "Tidy an Existing Note" button that explains this share-sheet flow, since Apple Notes has no read API and the share sheet is the only way in.
+TidyNote appears in the iOS share sheet for text. Open the app once first - a one-time screen explains what gets sent and asks you to agree; the extension works only after that. Share a note from Apple Notes (switch its share sheet from Collaborate to Send Copy) or selected text from any app, choose TidyNote, and the organized version appears. It never writes back to the shared note: "Save to Apple Notes" saves the result as a new note. There is no purchase UI - StoreKit purchases are not viable in a share extension - so a spent quota says "Open TidyNote to go Pro", or offers a button that opens the app on hosts that allow it. The app's home screen has a "Tidy an Existing Note" button that teaches this flow, since Apple Notes has no read API and the share sheet is the only way in.
 
 WIDGET, CONTROL, AND SIRI SHORTCUT
-All three do the same one thing: open the app with the URL "tidynote://record", which starts a recording as soon as the app is on screen. None of them record anything themselves, and none of them read or write any data - recording needs the app in the foreground and the microphone permission the user already granted there. To test: add the "Start a Tidy" widget to the Home Screen or the Lock Screen and tap it; on iOS 18, add the "Start a Tidy" control in Control Center; or say "Start a tidy in TidyNote" to Siri. Each opens the app with a recording already running. A tap that arrives while a recording, an upload, or a held recording is already in progress is ignored on purpose - the app comes to the front showing that instead of throwing the work away.
+All three just open the app with "tidynote://record", which starts a recording once the app is on screen; none of them record anything themselves or touch any data. To test: add the "Start a Tidy" widget to the Home or Lock Screen and tap it; on iOS 18, add the "Start a Tidy" control in Control Center; or say "Start a tidy in TidyNote" to Siri. A tap during a recording or upload is ignored on purpose; the app just comes to the front.
 
 MICROPHONE PERMISSION
-Requested only when the user taps record. The recording IS uploaded: it goes over HTTPS to our endpoint and on to our provider, which transcribes it and organizes the result. Neither we nor the app keep it, and our provider holds it only for its own abuse monitoring, about 30 days. The privacy policy below says this in full.
+Requested only when the user taps record. The recording IS uploaded: it goes over HTTPS to our provider, which transcribes and organizes it. Neither we nor the app keep it, and the provider holds it only for abuse monitoring, about 30 days.
 
 BACKGROUND AUDIO MODE
-The app declares the "audio" background mode for one reason: to keep a recording the user started running when they lock the phone or switch apps mid-sentence. Nothing records unless the user taps the microphone first, and the recording still stops itself after ten seconds of silence or five minutes, whichever comes first - so a recording left in a pocket ends on its own. There is no playback, no listening at launch, and no background activity of any kind once the recording ends. Nothing is uploaded while the app is in the background either: a recording that ends there is held on the device until the user comes back and taps Send. To see it: tap record, lock the phone, keep talking, then unlock - the recording is still going, and what was said while the phone was locked is in it.
+Declared for one reason: to keep a recording running when the user locks the phone or switches apps mid-sentence. Nothing records unless the user taps the microphone first, and a recording stops itself after ten seconds of silence or five minutes. There is no playback, no listening at launch, and no background activity once the recording ends; nothing uploads in the background - a recording that ends there waits until the user returns and taps Send. To see it: tap record, lock the phone, keep talking, then unlock - what was said while locked is in the recording.
 
 PRIVACY POLICY
-https://jhyang21.github.io/notes-organizer/privacy.html - it names our sub-processors and their retention periods explicitly, for audio and for text. The app's own copy avoids vendor names; the policy does not.
+https://jhyang21.github.io/notes-organizer/privacy.html names our sub-processors and their retention periods, for audio and for text. The app's own copy avoids vendor names; the policy does not.
 ```
 
 ## App Privacy (nutrition labels)
