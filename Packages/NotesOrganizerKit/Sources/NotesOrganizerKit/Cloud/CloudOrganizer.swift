@@ -197,7 +197,8 @@ public struct CloudOrganizer: NoteOrganizing, VoiceOrganizing {
             isPro: success.plan == "pro"
         )
         // Sanitized on the way in: a renderer should never be handed a blank
-        // bullet, whatever the model did.
+        // item or a heading the width of the screen, whatever came back. What
+        // the note says is the server's call; this only guards the layout.
         return OutputSanitizer.sanitize(success.note)
     }
 

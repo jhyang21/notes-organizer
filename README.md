@@ -12,9 +12,12 @@ and there are API costs. A RevenueCat subscription pays for them.
 Speak into the app, or share an Apple Note (or any text) into it from the
 share sheet. A recording is uploaded to the edge function and transcribed by
 Whisper; text shared in skips that step. Either way a GPT model turns the
-text into a title, sections with bullets, and action items, and the app
-shows a preview. Saving shares the note as plain text: the share sheet, then
-Notes, then its Save button — headings and checkboxes arrive as text lines.
+text into a title, an optional one-line summary, and a run of headed
+sections — each one prose, bullets, a checklist, a numbered procedure, or
+text kept verbatim — and the app shows a preview. Tasks are a checklist
+section rather than a list of their own. Saving shares the note as plain
+text: the share sheet, then Notes, then its Save button — headings and
+checkboxes arrive as text lines.
 
 The free plan allows five tidies a calendar month, counted on the server
 against an anonymous per-install identifier. TidyNote Pro lifts the cap.

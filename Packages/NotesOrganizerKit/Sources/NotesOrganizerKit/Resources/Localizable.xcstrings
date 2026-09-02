@@ -1,13 +1,16 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "Action Items" : {
+    "Completed" : {
 
     },
     "Copied" : {
 
     },
     "Copy as Text" : {
+
+    },
+    "Not completed" : {
 
     },
     "Not enough text to organize" : {

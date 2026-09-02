@@ -51,14 +51,15 @@ public struct OrganizeRun: Sendable {
     /// The words are counted on the note that comes back, not on what was
     /// said — the transcript never reaches this device. It is the closest
     /// number there is to the text path's, and it is what the diagnostics
-    /// table shows a voice run against.
+    /// table shows a voice run against. Counted on the note's own text, so
+    /// the markers a renderer would add don't inflate it.
     public func run(
         audioAt url: URL,
         durationSeconds: Double,
         locale: Locale,
         with organizer: VoiceOrganizing
     ) async -> Result<Outcome, OrganizeFailure>? {
-        await measure(wordCount: { WordCounter.count(PlainTextRenderer.render($0)) }) {
+        await measure(wordCount: { WordCounter.count($0) }) {
             try await organizer.organize(audioAt: url, durationSeconds: durationSeconds, locale: locale)
         }
     }

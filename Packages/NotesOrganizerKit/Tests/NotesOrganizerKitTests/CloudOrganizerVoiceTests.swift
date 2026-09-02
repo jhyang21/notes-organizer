@@ -52,10 +52,11 @@ struct CloudOrganizerVoiceTests {
     {
       "note": {
         "title": "Kitchen  quotes",
+        "summary": "",
         "sections": [
-          { "heading": "Quotes", "bullets": ["Bosch quoted 4200", ""] }
-        ],
-        "actionItems": ["Call Priya"]
+          { "heading": "Quotes", "kind": "bullets", "items": [{ "text": "Bosch quoted 4200" }, { "text": "" }] },
+          { "heading": "To Do", "kind": "checklist", "items": [{ "text": "Call Priya", "done": false }] }
+        ]
       },
       "quota": { "used": 2, "limit": 5, "remaining": 3, "month": "2026-08" },
       "plan": "free",
@@ -235,8 +236,10 @@ struct CloudOrganizerVoiceTests {
         let note = try await organizer.organize(audioAt: recording, durationSeconds: 42, locale: Locale(identifier: "en_US"))
 
         #expect(note.title == "Kitchen quotes")
-        #expect(note.sections == [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4200"])])
-        #expect(note.actionItems == ["Call Priya"])
+        #expect(note.sections == [
+            NoteSection(heading: "Quotes", kind: .bullets, items: ["Bosch quoted 4200"]),
+            NoteSection(heading: "To Do", kind: .checklist, items: ["Call Priya"]),
+        ])
 
         let state = try #require(store.planState())
         #expect(state.cloudUsed == 2)
@@ -254,7 +257,7 @@ struct CloudOrganizerVoiceTests {
 
         let json = """
         {
-          "note": { "title": "T", "sections": [], "actionItems": [] },
+          "note": { "title": "T", "summary": "", "sections": [] },
           "quota": { "used": 1, "limit": 5, "remaining": 4, "month": "2026-08" },
           "plan": "pro"
         }
