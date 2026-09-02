@@ -31,6 +31,9 @@
     "See TidyNote Pro" : {
 
     },
+    "Share a note with a few sentences in it and TidyNote will structure it." : {
+
+    },
     "Something went wrong on our end. Try again in a moment." : {
 
     },
@@ -47,6 +50,9 @@
 
     },
     "The tidy service hit a snag" : {
+
+    },
+    "There's not enough text to organize." : {
 
     },
     "They come back next month, or go unlimited with TidyNote Pro." : {
