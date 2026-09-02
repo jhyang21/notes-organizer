@@ -487,14 +487,18 @@ export interface OrganizeResult {
   usage?: TokenUsage;
 }
 
+/** `promptVersion` defaults to `PROMPT_VERSION`. The smoke runner
+ * (`smoke/smoke.ts`) passes it so one run can compare two prompts against the
+ * same fixtures; the handler never does. */
 export async function organizeText(
   fetchImpl: typeof fetch,
   apiKey: string,
   text: string,
   model: string,
   source: NoteSource,
+  promptVersion?: string,
 ): Promise<OrganizeResult> {
-  const request = buildOrganizeRequest(text, model, { source });
+  const request = buildOrganizeRequest(text, model, { source, promptVersion });
   const completion = await completeOrganize(fetchImpl, apiKey, request);
   const parsed = parseNote(completion.content);
   const note = sanitizeNote({

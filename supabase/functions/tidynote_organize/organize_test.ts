@@ -16,6 +16,7 @@ import {
   type OrganizedNote,
   parseNote,
   sanitizeNote,
+  SECTION_KINDS,
 } from './organize.ts';
 import { PROMPT_VERSION, PROMPTS } from './prompt.ts';
 
@@ -462,4 +463,19 @@ Deno.test('completeOrganize does not retry a 400 that is not about temperature',
     source: 'shared',
   });
   await assertRejects(() => completeOrganize(fetchStub, 'sk-test', request));
+});
+
+// ---------------------------------------------------------------------------
+// Prompt v2
+// ---------------------------------------------------------------------------
+
+Deno.test('prompt: v2 exists and is the default version', () => {
+  assertEquals(PROMPT_VERSION, 'v2');
+  assert(typeof PROMPTS.v2 === 'string' && PROMPTS.v2.length > 0);
+});
+
+Deno.test('prompt: v2 names every section kind', () => {
+  for (const kind of SECTION_KINDS) {
+    assert(PROMPTS.v2.includes(kind), `v2 never mentions "${kind}"`);
+  }
 });
