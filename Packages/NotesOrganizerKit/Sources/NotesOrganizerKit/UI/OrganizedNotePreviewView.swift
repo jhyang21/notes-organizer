@@ -40,7 +40,6 @@ public struct OrganizedNotePreviewView: View {
         }
     }
 
-    @ViewBuilder
     private func sectionView(_ section: NoteSection) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if !section.heading.isEmpty {

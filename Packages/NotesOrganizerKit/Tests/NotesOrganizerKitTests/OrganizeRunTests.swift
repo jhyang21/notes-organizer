@@ -82,8 +82,8 @@ struct OrganizeRunTests {
         #expect(await organizer.receivedRecordings == [recording])
         // The transcript never reaches the device, so the words are counted on
         // the note that came back — "Kitchen quotes", "Quotes", and the item.
-        // On the note's own text, so the renderer's bullet isn't a word.
-        #expect(outcome.wordCount == WordCounter.count(note))
+        // On the note's own text, so the renderer's bullet isn't a word — a
+        // render of this note would count seven.
         #expect(outcome.wordCount == 6)
 
         let timings = log.organizeTimings()

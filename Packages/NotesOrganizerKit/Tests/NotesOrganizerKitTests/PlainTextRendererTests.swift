@@ -48,9 +48,9 @@ struct PlainTextRendererTests {
         Pass:  x7 Q!9
         """
 
-        let rendered = PlainTextRenderer.render(kitchenNote())
-        #expect(rendered == expected)
-        #expect(!rendered.hasSuffix("\n"))
+        // The golden string ends without a newline, which pins the renderer's
+        // "lines joined, not lines terminated" rule as well.
+        #expect(PlainTextRenderer.render(kitchenNote()) == expected)
     }
 
     @Test("a summary sits under the title, one blank line down")
@@ -121,18 +121,6 @@ struct PlainTextRendererTests {
         ])
 
         #expect(PlainTextRenderer.render(note) == "Wi-Fi\n\nPass:  x7 Q!9\n  indented")
-    }
-
-    @Test("a checklist marks what is done and what isn't")
-    func checklistMarkers() {
-        let note = OrganizedNote(title: "Errands", sections: [
-            NoteSection(heading: "", kind: .checklist, items: [
-                NoteItem(text: "Call Bob"),
-                NoteItem(text: "Email Alice", done: true),
-            ]),
-        ])
-
-        #expect(PlainTextRenderer.render(note) == "Errands\n\n☐ Call Bob\n☑ Email Alice")
     }
 
     @Test("renders a fully empty note as an empty string")

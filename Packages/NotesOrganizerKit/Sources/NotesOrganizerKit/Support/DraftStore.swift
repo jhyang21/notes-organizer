@@ -24,9 +24,7 @@ public struct DraftStore: @unchecked Sendable {
 
     private enum Key {
         static let note = "draft.organizedNote.v2"
-        /// The slot as it was before sections gained kinds and items. Its
-        /// contents can't be read into the current note, so the only thing
-        /// left to do with it is throw it away.
+        /// The slot as it was before sections gained kinds and items.
         static let legacyNote = "draft.organizedNote"
     }
 
