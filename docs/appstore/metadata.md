@@ -25,7 +25,7 @@ Name and subtitle live on the `appInfoLocalization`; the URLs above live on the
 ## Promotional text (170 max)
 
 ```
-Ramble into your phone and get a clean note back: title, headings, bullets, and your action items. Every fact, name, number, and date you said stays in.
+Ramble into your phone and get a clean note back: a title, the structure it needs, and your to-dos as a checklist. Every fact, name, number, and date you said stays in.
 ```
 
 ## Keywords (100 max, comma-separated, no spaces)
@@ -45,7 +45,7 @@ messy notes fast" spent its 30 characters on words the name already carried.
 ```
 Talk it out. Get a clean note.
 
-TidyNote takes a voice ramble - or a messy note you already have - and turns it into a note you can actually read: a title, headings, bullets, and the action items you gave yourself.
+TidyNote takes a voice ramble - or a messy note you already have - and turns it into a note you can actually read: a title, only the structure the note needs, and the to-dos you gave yourself as a checklist. A list stays a list, a journal entry stays in your words, and a Wi-Fi password stays exactly as you typed it.
 
 It organizes. It does not summarize. Every fact, name, number, and date you said stays in the note. Nothing gets compressed into a tidy little paragraph that quietly drops the thing you needed.
 

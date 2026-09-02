@@ -29,7 +29,7 @@ review notes).
   tokens. CI secrets live in GitHub repo settings only.
 - **All shared logic lives in `Packages/NotesOrganizerKit`.** Anything used
   by both the app and the share extension — models, the organizer,
-  chunking/merging/sanitizing, renderers — goes in the package, not
+  the sanitizer, renderers — goes in the package, not
   duplicated in `App/` or `ShareExtension/`.
 - **Kit tests never touch the network — cloud calls go through an injected
   `Transport`.** `CloudOrganizer` takes a `Transport` closure
@@ -40,6 +40,26 @@ review notes).
 - Repo is authored on Windows — there is no local Xcode. Everything is
   written as plain text and verified via GitHub Actions
   (`macos-26` runners). Don't assume a local build; push and watch CI.
+
+## Edge function
+
+`supabase/functions/tidynote_organize/organize.ts` holds the OpenAI call:
+the strict JSON schema, request building, parsing and the server-side
+sanitizer. It must stay import-safe (no top-level side effects, no env
+reads) because the tests and the smoke set import it. `prompt.ts` is a
+`PROMPTS` map keyed by version; `PROMPT_VERSION` picks the one in
+production. `docs/ai/note-behavior.md` is the spec every prompt is written
+from: note kinds, transformation levels, rules, the redundancy budget.
+
+- **Do not change a prompt without running the smoke set** in
+  `supabase/functions/tidynote_organize/smoke/` (live, about $0.05 a run)
+  and reading every output against its watch line.
+- Tests: `deno test --allow-net --allow-env supabase/functions/tidynote_organize/`
+  (dependency-injected, no network). CI runs them on Ubuntu.
+- Deploy: `npx supabase functions deploy tidynote_organize --project-ref qcooviiralmdnfvbrtae`
+  from the repo root. Deploy only this function; the project is shared with
+  Relora. Send one warm-up request after a schema change: the strict-schema
+  grammar compiles on first use.
 
 ## Build & test
 
