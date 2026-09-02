@@ -6,8 +6,7 @@ import Testing
 struct DraftStoreTests {
     private let note = OrganizedNote(
         title: "Kitchen quotes",
-        sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4,200"])],
-        actionItems: ["Call the contractor back on Thursday"]
+        sections: [NoteSection(heading: "Quotes", kind: .bullets, items: ["Bosch quoted 4,200"])]
     )
 
     /// A throwaway suite per test, removed afterwards, so nothing leaks into
@@ -53,9 +52,20 @@ struct DraftStoreTests {
     @Test("a slot that no longer decodes reads as empty, not as a crash")
     func undecodableDataReadsAsEmpty() throws {
         try withStore { store, defaults in
-            defaults.set(Data("not a note".utf8), forKey: "draft.organizedNote")
+            defaults.set(Data("not a note".utf8), forKey: "draft.organizedNote.v2")
 
             #expect(store.load() == nil)
+        }
+    }
+
+    @Test("a draft left by the old note shape is ignored and swept up")
+    func legacyDraftIsIgnored() throws {
+        try withStore { store, defaults in
+            let legacy = #"{"title":"Old","sections":[{"heading":"H","bullets":["b"]}],"actionItems":["a"]}"#
+            defaults.set(Data(legacy.utf8), forKey: "draft.organizedNote")
+
+            #expect(store.load() == nil)
+            #expect(defaults.data(forKey: "draft.organizedNote") == nil)
         }
     }
 

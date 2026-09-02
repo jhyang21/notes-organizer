@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 struct ShareViewModelTests {
     private let note = OrganizedNote(
         title: "Kitchen quotes",
-        sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4,200"])]
+        sections: [NoteSection(heading: "Quotes", kind: .bullets, items: ["Bosch quoted 4,200"])]
     )
 
     /// What a share sheet hands the extension when the user selected text.

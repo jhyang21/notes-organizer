@@ -7,7 +7,7 @@ import Testing
 /// session-scoped consent fallback, and handing back the organizer that runs.
 @Suite("OrganizeRouting")
 struct OrganizeRoutingTests {
-    private let note = OrganizedNote(title: "Note", sections: [], actionItems: [])
+    private let note = OrganizedNote(title: "Note")
 
     /// A store on a throwaway suite, so nothing here touches the App Group or
     /// another test's state.
@@ -84,7 +84,7 @@ struct OrganizeRoutingTests {
         let (store, cleanup) = try makeStore()
         defer { cleanup() }
 
-        let cloud = MockOrganizer(result: OrganizedNote(title: "Cloud", sections: [], actionItems: []))
+        let cloud = MockOrganizer(result: OrganizedNote(title: "Cloud"))
         let routing = OrganizeRouting(store: store, cloud: cloud)
 
         let produced = try await routing.organizer().organize("a transcript worth organizing")
@@ -97,7 +97,7 @@ struct OrganizeRoutingTests {
         let (store, cleanup) = try makeStore()
         defer { cleanup() }
 
-        let cloud = MockOrganizer(result: OrganizedNote(title: "Cloud", sections: [], actionItems: []))
+        let cloud = MockOrganizer(result: OrganizedNote(title: "Cloud"))
         let routing = OrganizeRouting(store: store, cloud: cloud)
         let recording = URL(fileURLWithPath: "/tmp/capture-test.m4a")
 

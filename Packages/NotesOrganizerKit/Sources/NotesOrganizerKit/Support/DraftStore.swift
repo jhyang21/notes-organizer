@@ -23,7 +23,9 @@ public struct DraftStore: @unchecked Sendable {
     public static let shared = DraftStore(defaults: AppGroup.defaults)
 
     private enum Key {
-        static let note = "draft.organizedNote"
+        static let note = "draft.organizedNote.v2"
+        /// The slot as it was before sections gained kinds and items.
+        static let legacyNote = "draft.organizedNote"
     }
 
     public init(defaults: UserDefaults?) {
@@ -36,9 +38,15 @@ public struct DraftStore: @unchecked Sendable {
     }
 
     /// The saved note, or `nil` when there isn't one — including when what is
-    /// stored no longer decodes, which a release that changed the note's shape
-    /// could leave behind. Either way the answer is "nothing to restore".
+    /// stored no longer decodes. Either way the answer is "nothing to
+    /// restore".
+    ///
+    /// Also the one place the pre-v2 slot is swept up. An old-shape draft
+    /// would decode into a note with no sections, so it is deleted rather
+    /// than read: the user gets an empty screen instead of a gutted note,
+    /// and the bytes don't sit in the App Group forever.
     public func load() -> OrganizedNote? {
+        defaults?.removeObject(forKey: Key.legacyNote)
         guard let data = defaults?.data(forKey: Key.note) else { return nil }
         return try? JSONDecoder().decode(OrganizedNote.self, from: data)
     }

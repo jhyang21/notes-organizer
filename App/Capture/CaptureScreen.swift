@@ -457,8 +457,10 @@ private extension CaptureFailure {
     CaptureScreen(viewModel: CaptureViewModel(routing: OrganizeRouting(
         cloud: MockOrganizer(result: OrganizedNote(
             title: "Kitchen Renovation Notes",
-            sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4,200 for cabinets"])],
-            actionItems: ["Call the contractor back on Thursday"]
+            sections: [
+                NoteSection(heading: "Quotes", kind: .bullets, items: ["Bosch quoted 4,200 for cabinets"]),
+                NoteSection(heading: "To Do", kind: .checklist, items: ["Call the contractor back on Thursday"]),
+            ]
         ))
     )))
     .environment(plan)

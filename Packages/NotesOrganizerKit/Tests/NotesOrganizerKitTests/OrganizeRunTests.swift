@@ -42,7 +42,7 @@ struct OrganizeRunTests {
     @Test("a successful run returns the note and records a timing")
     func recordsTimingOnSuccess() async throws {
         let log = makeLog()
-        let note = OrganizedNote(title: "Organized", sections: [NoteSection(heading: "H", bullets: ["b"])])
+        let note = OrganizedNote(title: "Organized", sections: [NoteSection(heading: "H", items: ["b"])])
         let run = OrganizeRun(source: .app, log: log)
 
         let result = await run.run("one two three four", with: MockOrganizer(result: note))
@@ -67,7 +67,7 @@ struct OrganizeRunTests {
         let log = makeLog()
         let note = OrganizedNote(
             title: "Kitchen quotes",
-            sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4200"])]
+            sections: [NoteSection(heading: "Quotes", kind: .bullets, items: ["Bosch quoted 4200"])]
         )
         let organizer = MockOrganizer(result: note)
 
@@ -81,9 +81,10 @@ struct OrganizeRunTests {
         #expect(outcome.note == note)
         #expect(await organizer.receivedRecordings == [recording])
         // The transcript never reaches the device, so the words are counted on
-        // the note that came back — "Kitchen quotes", "Quotes", and the bullet.
-        #expect(outcome.wordCount == WordCounter.count(PlainTextRenderer.render(note)))
-        #expect(outcome.wordCount > 0)
+        // the note that came back — "Kitchen quotes", "Quotes", and the item.
+        // On the note's own text, so the renderer's bullet isn't a word — a
+        // render of this note would count seven.
+        #expect(outcome.wordCount == 6)
 
         let timings = log.organizeTimings()
         #expect(timings.count == 1)

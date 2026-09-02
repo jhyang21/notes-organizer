@@ -96,7 +96,7 @@ private extension CaptureViewModel.State {
 struct CaptureViewModelTests {
     private let note = OrganizedNote(
         title: "Kitchen quotes",
-        sections: [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4,200"])]
+        sections: [NoteSection(heading: "Quotes", kind: .bullets, items: ["Bosch quoted 4,200"])]
     )
 
     // MARK: - Fixtures

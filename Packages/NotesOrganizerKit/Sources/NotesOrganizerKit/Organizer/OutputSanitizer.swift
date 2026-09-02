@@ -1,44 +1,42 @@
 import Foundation
 
 /// Cleans up an `OrganizedNote` on its way back from the model: collapsed
-/// whitespace, no blank bullets, no repeated lines, no runaway headings. Pure
+/// whitespace, no blank items, no empty sections, no runaway headings. Pure
 /// and deterministic — no model calls.
+///
+/// Structural only. The server is authoritative about what a note says: it
+/// decides the wording, the order, the section kinds, and which lines are
+/// repeats worth dropping. This pass exists so the renderer and the preview
+/// are never handed a blank line or a heading the width of the screen, not
+/// to second-guess the tidy.
 enum OutputSanitizer {
     static let maxHeadingLength = 60
 
     static func sanitize(_ note: OrganizedNote) -> OrganizedNote {
-        let sections = note.sections.compactMap(sanitize(section:))
-
-        var seen = Set<String>()
-        var actionItems: [String] = []
-        for rawItem in note.actionItems {
-            let item = TextShaping.collapseWhitespace(rawItem)
-            let key = item.lowercased()
-            guard !item.isEmpty, !seen.contains(key) else { continue }
-            seen.insert(key)
-            actionItems.append(item)
-        }
-
-        return OrganizedNote(title: TextShaping.collapseWhitespace(note.title), sections: sections, actionItems: actionItems)
+        OrganizedNote(
+            title: TextShaping.collapseWhitespace(note.title),
+            summary: TextShaping.collapseWhitespace(note.summary),
+            sections: note.sections.compactMap(sanitize(section:))
+        )
     }
 
-    /// Drops the section entirely once its bullets are all empty/duplicate,
-    /// so a section with no remaining content never reaches the renderer.
+    /// Drops the section entirely once it has no items left, so a section
+    /// with no content never reaches the renderer.
     private static func sanitize(section: NoteSection) -> NoteSection? {
         let heading = TextShaping.truncate(TextShaping.collapseWhitespace(section.heading), to: maxHeadingLength)
+        // `done` is a checklist's state and nothing else's. Anywhere else a
+        // true would draw a tick the section has no boxes for.
+        let keepsDone = section.kind == .checklist
 
-        var bullets: [String] = []
-        var previousKey: String?
-        for rawBullet in section.bullets {
-            let bullet = TextShaping.collapseWhitespace(rawBullet)
-            guard !bullet.isEmpty else { continue }
-            let key = bullet.lowercased()
-            if key == previousKey { continue }
-            bullets.append(bullet)
-            previousKey = key
+        let items: [NoteItem] = section.items.compactMap { item in
+            // Verbatim text is kept byte for byte: its spacing is the reason
+            // the server marked it verbatim.
+            let text = section.kind == .verbatim ? item.text : TextShaping.collapseWhitespace(item.text)
+            guard !text.isEmpty else { return nil }
+            return NoteItem(text: text, done: keepsDone && item.done)
         }
 
-        guard !bullets.isEmpty else { return nil }
-        return NoteSection(heading: heading, bullets: bullets)
+        guard !items.isEmpty else { return nil }
+        return NoteSection(heading: heading, kind: section.kind, items: items)
     }
 }

@@ -61,10 +61,11 @@ struct CloudOrganizerTests {
     {
       "note": {
         "title": "Kitchen  quotes",
+        "summary": "Two  quotes.",
         "sections": [
-          { "heading": "Quotes", "bullets": ["Bosch quoted 4200", "", "Bosch quoted 4200"] }
-        ],
-        "actionItems": ["Call Priya"]
+          { "heading": "Quotes", "kind": "bullets", "items": [{ "text": "Bosch quoted 4200", "done": false }, { "text": "" }] },
+          { "heading": "To Do", "kind": "checklist", "items": [{ "text": "Call Priya", "done": true }] }
+        ]
       },
       "quota": { "used": 2, "limit": 5, "remaining": 3, "month": "2026-08" },
       "plan": "free"
@@ -94,11 +95,13 @@ struct CloudOrganizerTests {
 
         let note = try await organizer.organize(transcript)
 
-        // Sanitized on the way in: collapsed whitespace, no blank bullet, no
-        // repeat of the line before it.
+        // Sanitized on the way in: collapsed whitespace, no blank item.
         #expect(note.title == "Kitchen quotes")
-        #expect(note.sections == [NoteSection(heading: "Quotes", bullets: ["Bosch quoted 4200"])])
-        #expect(note.actionItems == ["Call Priya"])
+        #expect(note.summary == "Two quotes.")
+        #expect(note.sections == [
+            NoteSection(heading: "Quotes", kind: .bullets, items: ["Bosch quoted 4200"]),
+            NoteSection(heading: "To Do", kind: .checklist, items: [NoteItem(text: "Call Priya", done: true)]),
+        ])
 
         let state = try #require(store.planState())
         #expect(state.cloudUsed == 2)
@@ -114,7 +117,7 @@ struct CloudOrganizerTests {
 
         let json = """
         {
-          "note": { "title": "T", "sections": [], "actionItems": [] },
+          "note": { "title": "T", "summary": "", "sections": [] },
           "quota": { "used": 9, "limit": 5, "remaining": 0, "month": "2026-08" },
           "plan": "pro"
         }
