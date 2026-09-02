@@ -13,10 +13,16 @@
     "Cancel" : {
 
     },
+    "Choose TidyNote. Your note gets organized right there — save the clean copy without leaving Notes." : {
+
+    },
     "Continue" : {
 
     },
     "Diagnostics" : {
+
+    },
+    "Done" : {
 
     },
     "Free plan" : {
@@ -26,6 +32,12 @@
 
     },
     "How TidyNote works" : {
+
+    },
+    "If the sheet says Collaborate, switch it to Send Copy." : {
+
+    },
+    "In Apple Notes, open the messy note and tap Share." : {
 
     },
     "Long recordings can take a couple of minutes." : {
@@ -139,7 +151,13 @@
     "The recording didn't save. Try again." : {
 
     },
+    "This works from any app that can share text." : {
+
+    },
     "Tidies are unlimited." : {
+
+    },
+    "Tidy an Existing Note" : {
 
     },
     "TidyNote" : {

@@ -23,7 +23,9 @@ public struct UnavailableView: View {
     /// - Parameter inShareExtension: subscribing and getting started both
     ///   happen in the app and nowhere else. Set this where the app's screens
     ///   can't be reached, and those two dead ends say where the switch lives
-    ///   instead of showing a button that couldn't work.
+    ///   instead of showing a button that couldn't work. It also picks the
+    ///   vocabulary for `emptyTranscript`: shared text here, a recording in the
+    ///   app, which are the two ways to arrive at it.
     /// - Parameter onOpenApp: opens the app at the link handed to it. Where the
     ///   host can hand off, the two share-extension hints become the buttons
     ///   they describe; `nil` keeps the hint, which is what a host that can't
@@ -65,7 +67,16 @@ public struct UnavailableView: View {
         case .networkUnavailable, .cloudUnavailable:
             retryButton(title: String(localized: "Try Again", bundle: .module))
 
-        case .emptyTranscript, .audioTooLarge:
+        case .emptyTranscript:
+            // In the extension the text is fixed — resubmitting the same words
+            // hits the same gate, so no button; the message says what to
+            // change. A new recording can genuinely differ, so the app offers
+            // one.
+            if !inShareExtension {
+                retryButton(title: String(localized: "Record Again", bundle: .module))
+            }
+
+        case .audioTooLarge:
             retryButton(title: String(localized: "Record Again", bundle: .module))
 
         case .cloudQuotaExhausted:
@@ -137,7 +148,12 @@ public struct UnavailableView: View {
 
     private var title: String {
         switch failure {
-        case .emptyTranscript: String(localized: "Nothing to tidy", bundle: .module)
+        case .emptyTranscript:
+            if inShareExtension {
+                String(localized: "Not enough text to organize", bundle: .module)
+            } else {
+                String(localized: "Nothing to tidy", bundle: .module)
+            }
         case .cloudQuotaExhausted: String(localized: "You've used this month's tidies", bundle: .module)
         case .cloudConsentNeeded: String(localized: "TidyNote isn't set up yet", bundle: .module)
         case .networkUnavailable: String(localized: "You're offline", bundle: .module)
@@ -149,7 +165,11 @@ public struct UnavailableView: View {
     private var message: String {
         switch failure {
         case .emptyTranscript:
-            String(localized: "We didn't catch enough to organize. Speak for a few seconds and try again.", bundle: .module)
+            if inShareExtension {
+                String(localized: "Share a note with a few sentences in it and TidyNote will structure it.", bundle: .module)
+            } else {
+                String(localized: "We didn't catch enough to organize. Speak for a few seconds and try again.", bundle: .module)
+            }
         case .cloudQuotaExhausted:
             String(localized: "They come back next month, or go unlimited with TidyNote Pro.", bundle: .module)
         case .cloudConsentNeeded:
@@ -166,6 +186,10 @@ public struct UnavailableView: View {
 
 #Preview("Empty transcript") {
     UnavailableView(failure: .emptyTranscript, onRetry: {})
+}
+
+#Preview("Empty transcript, share extension") {
+    UnavailableView(failure: .emptyTranscript, onRetry: {}, inShareExtension: true)
 }
 
 #Preview("Quota exhausted") {

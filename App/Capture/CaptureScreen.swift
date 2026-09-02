@@ -9,6 +9,7 @@ import UIKit
 struct CaptureScreen: View {
     @State private var viewModel: CaptureViewModel
     @State private var isShowingPaywall = false
+    @State private var isShowingHowToTidy = false
     @Environment(PlanModel.self) private var plan
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
@@ -83,6 +84,7 @@ struct CaptureScreen: View {
         .sheet(isPresented: $isShowingPaywall, onDismiss: { viewModel.refreshPlan() }) {
             PaywallScreen()
         }
+        .sheet(isPresented: $isShowingHowToTidy) { HowToTidyScreen() }
         // Full screen rather than a sheet: there is nothing behind it to use
         // yet, and nothing to swipe it away for.
         .fullScreenCover(isPresented: $viewModel.isShowingFirstRun) {
@@ -263,6 +265,10 @@ struct CaptureScreen: View {
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+
+            Button("Tidy an Existing Note") { isShowingHowToTidy = true }
+                .buttonStyle(.bordered)
+                .frame(minHeight: 44)
 
             // Only when there is a real number to say. Pro is unlimited, and a
             // fresh install hasn't heard a count from the server yet; both
