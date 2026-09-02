@@ -18,7 +18,7 @@
 // to fit the richer section-kind schema; the real prompt rewrite is a later
 // PR.
 
-export const PROMPT_VERSION = "v1";
+export const PROMPT_VERSION = 'v1';
 
 export const PROMPTS: Record<string, string> = {
   v1: `# Identity

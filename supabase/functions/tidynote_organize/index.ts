@@ -15,15 +15,8 @@
 // The note text is never logged. Neither is the audio: it lives only for the
 // length of the transcription call and is written nowhere.
 
-import {
-  createClient,
-  type SupabaseClient,
-} from "https://esm.sh/@supabase/supabase-js@2.56.0";
-import {
-  type Classification,
-  type OrganizedNote,
-  organizeText,
-} from "./organize.ts";
+import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.56.0';
+import { type Classification, type OrganizedNote, organizeText, type TokenUsage } from './organize.ts';
 
 const MAX_TEXT_CHARS = 60_000;
 const APP_USER_ID_PATTERN = /^[A-Za-z0-9:_\-.]{8,80}$/;
@@ -46,19 +39,17 @@ const USER_REQUESTS_PER_MINUTE = 6;
 const IP_REQUESTS_PER_MINUTE = 20;
 
 const ENTITLEMENT_CACHE_TTL_MS = 5 * 60 * 1000;
-const DEFAULT_MODEL = "gpt-5-mini";
+const DEFAULT_MODEL = 'gpt-5-mini';
 const WHISPER_TIMEOUT_MS = 45_000;
-const DEFAULT_WHISPER_MODEL = "whisper-1";
+const DEFAULT_WHISPER_MODEL = 'whisper-1';
 // Whisper imitates the style of its prompt, so this asks for the punctuation
 // and casing it otherwise omits. It is a style sample, not an instruction.
-const WHISPER_PROMPT =
-  "A personal voice note. Use normal punctuation and sentence casing.";
+const WHISPER_PROMPT = 'A personal voice note. Use normal punctuation and sentence casing.';
 
 const CORS_HEADERS: Record<string, string> = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers":
-    "authorization, x-client-info, apikey, content-type",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
 
 // ---------------------------------------------------------------------------
@@ -72,7 +63,7 @@ export interface QuotaState {
   month: string;
 }
 
-export type Plan = "free" | "pro";
+export type Plan = 'free' | 'pro';
 
 /** Everything the handler touches that isn't pure, injected so tests never open
  * a socket or need a database. */
@@ -81,11 +72,7 @@ export interface Deps {
   env(key: string): string | undefined;
   now(): Date;
   consumeRate(key: string, window: string, limit: number): Promise<boolean>;
-  consumeQuota(
-    userId: string,
-    month: string,
-    limit: number,
-  ): Promise<{ allowed: boolean; used: number }>;
+  consumeQuota(userId: string, month: string, limit: number): Promise<{ allowed: boolean; used: number }>;
 }
 
 // ---------------------------------------------------------------------------
@@ -95,16 +82,11 @@ export interface Deps {
 function jsonResponse(payload: unknown, status: number): Response {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
   });
 }
 
-function errorResponse(
-  code: string,
-  message: string,
-  status: number,
-  extra?: Record<string, unknown>,
-): Response {
+function errorResponse(code: string, message: string, status: number, extra?: Record<string, unknown>): Response {
   return jsonResponse({ error: { code, message }, ...extra }, status);
 }
 
@@ -121,21 +103,18 @@ export function minuteKey(now: Date): string {
 }
 
 export async function sha256Hex(input: string): Promise<string> {
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(input),
-  );
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
   return Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 /** First hop of X-Forwarded-For. Later hops are appended by our own proxies, so
  * only the first entry identifies the caller. */
 export function clientIp(req: Request): string | null {
-  const header = req.headers.get("x-forwarded-for");
+  const header = req.headers.get('x-forwarded-for');
   if (!header) return null;
-  const first = header.split(",")[0]?.trim();
+  const first = header.split(',')[0]?.trim();
   return first ? first : null;
 }
 
@@ -147,17 +126,14 @@ function quotaState(used: number, limit: number, month: string): QuotaState {
  * file both read as absent, which is what every caller here wants. */
 function formField(form: FormData, name: string): string {
   const value = form.get(name);
-  return typeof value === "string" ? value : "";
+  return typeof value === 'string' ? value : '';
 }
 
 // ---------------------------------------------------------------------------
 // Entitlement
 // ---------------------------------------------------------------------------
 
-const entitlementCache = new Map<
-  string,
-  { isPro: boolean; expiresAtMs: number }
->();
+const entitlementCache = new Map<string, { isPro: boolean; expiresAtMs: number }>();
 
 /** Exposed so tests start from a clean cache. */
 export function _resetEntitlementCache(): void {
@@ -180,43 +156,32 @@ function entitlementIsActive(expiresDate: unknown, now: Date): boolean {
  * radius. Until M10 sets TIDYNOTE_RC_API_KEY there is no Pro tier at all, so an
  * absent key takes the same path.
  */
-export async function resolvePlan(
-  deps: Deps,
-  appUserId: string,
-): Promise<Plan> {
-  const apiKey = deps.env("TIDYNOTE_RC_API_KEY");
-  if (!apiKey) return "free";
+export async function resolvePlan(deps: Deps, appUserId: string): Promise<Plan> {
+  const apiKey = deps.env('TIDYNOTE_RC_API_KEY');
+  if (!apiKey) return 'free';
 
   const nowMs = deps.now().getTime();
   const cached = entitlementCache.get(appUserId);
-  if (cached && cached.expiresAtMs > nowMs) {
-    return cached.isPro ? "pro" : "free";
-  }
+  if (cached && cached.expiresAtMs > nowMs) return cached.isPro ? 'pro' : 'free';
 
   try {
     const response = await deps.fetch(
-      `https://api.revenuecat.com/v1/subscribers/${
-        encodeURIComponent(appUserId)
-      }`,
+      `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`,
       { headers: { Authorization: `Bearer ${apiKey}` } },
     );
     // A transient RevenueCat error is not evidence about this user, so it is
     // never cached -- the next request asks again.
-    if (!response.ok) return "free";
+    if (!response.ok) return 'free';
 
     const body = await response.json();
     const entitlements = body?.subscriber?.entitlements ?? body?.entitlements;
     const pro = entitlements?.pro;
-    const isPro = Boolean(pro) &&
-      entitlementIsActive(pro.expires_date, deps.now());
+    const isPro = Boolean(pro) && entitlementIsActive(pro.expires_date, deps.now());
 
-    entitlementCache.set(appUserId, {
-      isPro,
-      expiresAtMs: nowMs + ENTITLEMENT_CACHE_TTL_MS,
-    });
-    return isPro ? "pro" : "free";
+    entitlementCache.set(appUserId, { isPro, expiresAtMs: nowMs + ENTITLEMENT_CACHE_TTL_MS });
+    return isPro ? 'pro' : 'free';
   } catch {
-    return "free";
+    return 'free';
   }
 }
 
@@ -227,38 +192,27 @@ export async function resolvePlan(
 /** Turns the uploaded audio into text. The file is forwarded straight from the
  * parsed form to OpenAI and dropped -- it is never buffered to disk, stored, or
  * written to a log. */
-async function transcribe(
-  deps: Deps,
-  audio: File,
-  model: string,
-  apiKey: string,
-  locale: string,
-): Promise<string> {
+async function transcribe(deps: Deps, audio: File, model: string, apiKey: string, locale: string): Promise<string> {
   const form = new FormData();
-  form.append("file", audio);
-  form.append("model", model);
-  form.append("response_format", "text");
+  form.append('file', audio);
+  form.append('model', model);
+  form.append('response_format', 'text');
   // A hint, not a constraint: naming the language stops Whisper guessing wrong
   // on a short or noisy clip. The region half of a BCP-47 tag means nothing to
   // the API, so only the language subtag goes over.
-  if (locale) form.append("language", locale.slice(0, 2));
-  form.append("prompt", WHISPER_PROMPT);
+  if (locale) form.append('language', locale.slice(0, 2));
+  form.append('prompt', WHISPER_PROMPT);
 
-  const response = await deps.fetch(
-    "https://api.openai.com/v1/audio/transcriptions",
-    {
-      method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}` },
-      body: form,
-      signal: AbortSignal.timeout(WHISPER_TIMEOUT_MS),
-    },
-  );
+  const response = await deps.fetch('https://api.openai.com/v1/audio/transcriptions', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+    signal: AbortSignal.timeout(WHISPER_TIMEOUT_MS),
+  });
 
   if (!response.ok) {
     const detail = await response.text();
-    throw new Error(
-      `whisper status ${response.status}: ${detail.slice(0, 200)}`,
-    );
+    throw new Error(`whisper status ${response.status}: ${detail.slice(0, 200)}`);
   }
   // response_format is text, so the body is the transcript itself.
   return await response.text();
@@ -270,162 +224,118 @@ async function transcribe(
 
 /** Rate limiting is advisory: if the counter itself is broken, serving the
  * request is better than a hard outage. The quota below is the real ceiling. */
-async function withinRate(
-  deps: Deps,
-  key: string,
-  window: string,
-  limit: number,
-): Promise<boolean> {
+async function withinRate(deps: Deps, key: string, window: string, limit: number): Promise<boolean> {
   try {
     return await deps.consumeRate(key, window, limit);
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        tag: "tidynote_organize",
-        event: "rate_limit_unavailable",
-        message: String(error),
-      }),
-    );
+    console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'rate_limit_unavailable', message: String(error) }));
     return true;
   }
 }
 
-export async function handleRequest(
-  req: Request,
-  deps: Deps,
-): Promise<Response> {
+export async function handleRequest(req: Request, deps: Deps): Promise<Response> {
   const startedAt = Date.now();
-  let plan: Plan = "free";
-  let userTag = "none";
+  let plan: Plan = 'free';
+  let userTag = 'none';
   let status = 500;
   let code: string | undefined;
-  let usage: {
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-  } | undefined;
+  let usage: TokenUsage | undefined;
   let classification: Classification | undefined;
   let note: OrganizedNote | undefined;
-  let mode: "text" | "voice" = "text";
+  let mode: 'text' | 'voice' = 'text';
   let audioBytes: number | undefined;
-  const model = deps.env("TIDYNOTE_OPENAI_MODEL") || DEFAULT_MODEL;
+  const model = deps.env('TIDYNOTE_OPENAI_MODEL') || DEFAULT_MODEL;
 
   try {
-    if (req.method === "OPTIONS") {
+    if (req.method === 'OPTIONS') {
       status = 204;
       return new Response(null, { status: 204, headers: CORS_HEADERS });
     }
-    if (req.method !== "POST") {
+    if (req.method !== 'POST') {
       status = 405;
-      code = "method_not_allowed";
-      return errorResponse(code, "Use POST.", status);
+      code = 'method_not_allowed';
+      return errorResponse(code, 'Use POST.', status);
     }
 
     // --- validate ---------------------------------------------------------
     // The content type is the whole routing decision. Clients that predate the
     // voice path send JSON and must not be able to tell this function grew a
     // second door.
-    mode = (req.headers.get("content-type") ?? "").toLowerCase().includes(
-        "multipart/form-data",
-      )
-      ? "voice"
-      : "text";
+    mode = (req.headers.get('content-type') ?? '').toLowerCase().includes('multipart/form-data') ? 'voice' : 'text';
 
     let appUserId: string;
-    let text = "";
+    let text = '';
     let audio: File | null = null;
-    let locale = "";
+    let locale = '';
     let durationSeconds = 0;
 
-    if (mode === "voice") {
+    if (mode === 'voice') {
       let form: FormData;
       try {
         form = await req.formData();
       } catch {
         status = 400;
-        code = "invalid_request";
-        return errorResponse(
-          code,
-          "Body must be a well-formed multipart form.",
-          status,
-        );
+        code = 'invalid_request';
+        return errorResponse(code, 'Body must be a well-formed multipart form.', status);
       }
-      appUserId = formField(form, "appUserId");
-      locale = formField(form, "locale");
+      appUserId = formField(form, 'appUserId');
+      locale = formField(form, 'locale');
       // Advisory: the client measures it, so it is a cheap way to reject a long
       // recording before reading the bytes, not a figure to be trusted.
-      durationSeconds = Number(formField(form, "durationSeconds"));
-      const part = form.get("audio");
+      durationSeconds = Number(formField(form, 'durationSeconds'));
+      const part = form.get('audio');
       audio = part instanceof File ? part : null;
     } else {
-      let payload: {
-        text?: unknown;
-        appUserId?: unknown;
-        clientVersion?: unknown;
-      };
+      let payload: { text?: unknown; appUserId?: unknown; clientVersion?: unknown };
       try {
         payload = await req.json();
       } catch {
         status = 400;
-        code = "invalid_request";
-        return errorResponse(code, "Body must be JSON.", status);
+        code = 'invalid_request';
+        return errorResponse(code, 'Body must be JSON.', status);
       }
 
-      const rawText = typeof payload.text === "string" ? payload.text : "";
+      const rawText = typeof payload.text === 'string' ? payload.text : '';
       text = rawText.trim();
-      appUserId = typeof payload.appUserId === "string"
-        ? payload.appUserId
-        : "";
+      appUserId = typeof payload.appUserId === 'string' ? payload.appUserId : '';
     }
 
     if (!APP_USER_ID_PATTERN.test(appUserId)) {
       status = 400;
-      code = "invalid_request";
-      return errorResponse(code, "appUserId is missing or malformed.", status);
+      code = 'invalid_request';
+      return errorResponse(code, 'appUserId is missing or malformed.', status);
     }
 
     userTag = (await sha256Hex(appUserId)).slice(0, 12);
 
-    if (mode === "voice") {
+    if (mode === 'voice') {
       if (!audio) {
         status = 400;
-        code = "invalid_request";
-        return errorResponse(code, "audio is missing.", status);
+        code = 'invalid_request';
+        return errorResponse(code, 'audio is missing.', status);
       }
       audioBytes = audio.size;
       if (audio.size > MAX_AUDIO_BYTES) {
         status = 413;
-        code = "audio_too_large";
-        return errorResponse(
-          code,
-          `audio exceeds ${MAX_AUDIO_BYTES} bytes.`,
-          status,
-        );
+        code = 'audio_too_large';
+        return errorResponse(code, `audio exceeds ${MAX_AUDIO_BYTES} bytes.`, status);
       }
       if (durationSeconds > MAX_AUDIO_SECONDS) {
         status = 413;
-        code = "audio_too_large";
-        return errorResponse(
-          code,
-          `audio exceeds ${MAX_AUDIO_SECONDS} seconds.`,
-          status,
-        );
+        code = 'audio_too_large';
+        return errorResponse(code, `audio exceeds ${MAX_AUDIO_SECONDS} seconds.`, status);
       }
     } else {
       if (text.length === 0) {
         status = 400;
-        code = "invalid_request";
-        return errorResponse(code, "text is empty.", status);
+        code = 'invalid_request';
+        return errorResponse(code, 'text is empty.', status);
       }
       // Measured on the trimmed text, which is what actually reaches the model.
       if (text.length > MAX_TEXT_CHARS) {
         status = 413;
-        code = "too_long";
-        return errorResponse(
-          code,
-          `text exceeds ${MAX_TEXT_CHARS} characters.`,
-          status,
-        );
+        code = 'too_long';
+        return errorResponse(code, `text exceeds ${MAX_TEXT_CHARS} characters.`, status);
       }
     }
 
@@ -433,21 +343,10 @@ export async function handleRequest(
     const now = deps.now();
     const window = minuteKey(now);
 
-    if (
-      !(await withinRate(
-        deps,
-        `u:${appUserId}`,
-        window,
-        USER_REQUESTS_PER_MINUTE,
-      ))
-    ) {
+    if (!(await withinRate(deps, `u:${appUserId}`, window, USER_REQUESTS_PER_MINUTE))) {
       status = 429;
-      code = "rate_limited";
-      return errorResponse(
-        code,
-        "Too many requests. Try again in a moment.",
-        status,
-      );
+      code = 'rate_limited';
+      return errorResponse(code, 'Too many requests. Try again in a moment.', status);
     }
 
     const ip = clientIp(req);
@@ -455,34 +354,24 @@ export async function handleRequest(
       const ipKey = `ip:${await sha256Hex(ip)}`;
       if (!(await withinRate(deps, ipKey, window, IP_REQUESTS_PER_MINUTE))) {
         status = 429;
-        code = "rate_limited";
-        return errorResponse(
-          code,
-          "Too many requests. Try again in a moment.",
-          status,
-        );
+        code = 'rate_limited';
+        return errorResponse(code, 'Too many requests. Try again in a moment.', status);
       }
     }
 
     // --- entitlement + quota ---------------------------------------------
     plan = await resolvePlan(deps, appUserId);
     const month = monthKey(now);
-    const limit = plan === "pro" ? PRO_MONTHLY_LIMIT : FREE_MONTHLY_LIMIT;
+    const limit = plan === 'pro' ? PRO_MONTHLY_LIMIT : FREE_MONTHLY_LIMIT;
 
     let used: number;
-    if (plan === "pro") {
+    if (plan === 'pro') {
       // Counted for fair-use visibility only. A counter failure must never
       // stand between a paying user and their note.
       try {
         used = (await deps.consumeQuota(appUserId, month, limit)).used;
       } catch (error) {
-        console.error(
-          JSON.stringify({
-            tag: "tidynote_organize",
-            event: "pro_quota_count_failed",
-            message: String(error),
-          }),
-        );
+        console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'pro_quota_count_failed', message: String(error) }));
         used = 0;
       }
     } else {
@@ -492,25 +381,15 @@ export async function handleRequest(
       } catch (error) {
         // Failing open here would uncap free spend, which is the one thing the
         // quota exists to prevent. Fail closed and let the client offer a retry.
-        console.error(
-          JSON.stringify({
-            tag: "tidynote_organize",
-            event: "quota_unavailable",
-            message: String(error),
-          }),
-        );
+        console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'quota_unavailable', message: String(error) }));
         status = 503;
-        code = "quota_unavailable";
-        return errorResponse(
-          code,
-          "Usage service is unavailable. Try again shortly.",
-          status,
-        );
+        code = 'quota_unavailable';
+        return errorResponse(code, 'Usage service is unavailable. Try again shortly.', status);
       }
       if (!result.allowed) {
         status = 429;
-        code = "quota_exhausted";
-        return errorResponse(code, "Monthly premium tidies used", status, {
+        code = 'quota_exhausted';
+        return errorResponse(code, 'Monthly premium tidies used', status, {
           quota: quotaState(result.used, limit, month),
         });
       }
@@ -518,11 +397,11 @@ export async function handleRequest(
     }
 
     // --- transcribe -------------------------------------------------------
-    const openAiKey = deps.env("OPENAI_API_KEY");
+    const openAiKey = deps.env('OPENAI_API_KEY');
     if (!openAiKey) {
       status = 502;
-      code = "upstream_error";
-      return errorResponse(code, "Organizer is not configured.", status);
+      code = 'upstream_error';
+      return errorResponse(code, 'Organizer is not configured.', status);
     }
 
     // Voice only -- a JSON request already has its text. The quota was charged
@@ -532,28 +411,12 @@ export async function handleRequest(
     if (audio) {
       let transcript: string;
       try {
-        transcript = await transcribe(
-          deps,
-          audio,
-          deps.env("TIDYNOTE_WHISPER_MODEL") || DEFAULT_WHISPER_MODEL,
-          openAiKey,
-          locale,
-        );
+        transcript = await transcribe(deps, audio, deps.env('TIDYNOTE_WHISPER_MODEL') || DEFAULT_WHISPER_MODEL, openAiKey, locale);
       } catch (error) {
-        console.error(
-          JSON.stringify({
-            tag: "tidynote_organize",
-            event: "transcription_failed",
-            message: String(error),
-          }),
-        );
+        console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'transcription_failed', message: String(error) }));
         status = 502;
-        code = "upstream_error";
-        return errorResponse(
-          code,
-          "The tidy service could not transcribe this recording.",
-          status,
-        );
+        code = 'upstream_error';
+        return errorResponse(code, 'The tidy service could not transcribe this recording.', status);
       }
 
       text = transcript.trim();
@@ -562,52 +425,27 @@ export async function handleRequest(
       // blaming the organizer.
       if (text.length === 0) {
         status = 422;
-        code = "empty_transcript";
-        return errorResponse(
-          code,
-          "No speech was found in the recording.",
-          status,
-        );
+        code = 'empty_transcript';
+        return errorResponse(code, 'No speech was found in the recording.', status);
       }
       if (text.length > MAX_TEXT_CHARS) {
         status = 413;
-        code = "too_long";
-        return errorResponse(
-          code,
-          `text exceeds ${MAX_TEXT_CHARS} characters.`,
-          status,
-        );
+        code = 'too_long';
+        return errorResponse(code, `text exceeds ${MAX_TEXT_CHARS} characters.`, status);
       }
     }
 
     // --- organize ---------------------------------------------------------
     try {
-      const source = mode === "voice" ? "voice" : "shared";
-      const outcome = await organizeText(
-        deps.fetch,
-        openAiKey,
-        text,
-        model,
-        source,
-      );
+      const outcome = await organizeText(deps.fetch, openAiKey, text, model, mode === 'voice' ? 'voice' : 'shared');
       note = outcome.note;
       classification = outcome.classification;
-      usage = outcome.usage as typeof usage;
+      usage = outcome.usage;
     } catch (error) {
-      console.error(
-        JSON.stringify({
-          tag: "tidynote_organize",
-          event: "upstream_failed",
-          message: String(error),
-        }),
-      );
+      console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'upstream_failed', message: String(error) }));
       status = 502;
-      code = "upstream_error";
-      return errorResponse(
-        code,
-        "The tidy service could not organize this note.",
-        status,
-      );
+      code = 'upstream_error';
+      return errorResponse(code, 'The tidy service could not organize this note.', status);
     }
 
     status = 200;
@@ -617,25 +455,14 @@ export async function handleRequest(
     // only -- classification (`noteKind`, `level`) steered the model and is
     // logged below, but it never reaches the client.
     return jsonResponse(
-      {
-        note,
-        quota: quotaState(used, limit, month),
-        plan,
-        ...(mode === "voice" ? { transcript: text } : {}),
-      },
+      { note, quota: quotaState(used, limit, month), plan, ...(mode === 'voice' ? { transcript: text } : {}) },
       200,
     );
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        tag: "tidynote_organize",
-        event: "unhandled",
-        message: String(error),
-      }),
-    );
+    console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'unhandled', message: String(error) }));
     status = 500;
-    code = "internal_error";
-    return errorResponse(code, "Something went wrong.", status);
+    code = 'internal_error';
+    return errorResponse(code, 'Something went wrong.', status);
   } finally {
     // One line per request. Note text never appears here, nor any part of the
     // audio -- audio_bytes is a size, not content -- and the user id is reduced
@@ -643,7 +470,7 @@ export async function handleRequest(
     // the id.
     console.log(
       JSON.stringify({
-        tag: "tidynote_organize",
+        tag: 'tidynote_organize',
         ms: Date.now() - startedAt,
         status,
         plan,
@@ -652,19 +479,11 @@ export async function handleRequest(
         model,
         ...(audioBytes !== undefined ? { audio_bytes: audioBytes } : {}),
         ...(code ? { code } : {}),
-        ...(classification
-          ? { note_kind: classification.noteKind, level: classification.level }
-          : {}),
+        ...(classification ? { note_kind: classification.noteKind, level: classification.level } : {}),
         ...(note ? { sections: note.sections.length } : {}),
-        ...(usage?.prompt_tokens !== undefined
-          ? { prompt_tokens: usage.prompt_tokens }
-          : {}),
-        ...(usage?.completion_tokens !== undefined
-          ? { completion_tokens: usage.completion_tokens }
-          : {}),
-        ...(usage?.total_tokens !== undefined
-          ? { total_tokens: usage.total_tokens }
-          : {}),
+        ...(usage?.prompt_tokens !== undefined ? { prompt_tokens: usage.prompt_tokens } : {}),
+        ...(usage?.completion_tokens !== undefined ? { completion_tokens: usage.completion_tokens } : {}),
+        ...(usage?.total_tokens !== undefined ? { total_tokens: usage.total_tokens } : {}),
       }),
     );
   }
@@ -678,13 +497,9 @@ let cachedClient: SupabaseClient | null = null;
 
 function serviceClient(): SupabaseClient {
   if (!cachedClient) {
-    const url = Deno.env.get("SUPABASE_URL");
-    const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-    if (!url || !key) {
-      throw new Error(
-        "SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are injected by the platform and must be present",
-      );
-    }
+    const url = Deno.env.get('SUPABASE_URL');
+    const key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    if (!url || !key) throw new Error('SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY are injected by the platform and must be present');
     cachedClient = createClient(url, key, { auth: { persistSession: false } });
   }
   return cachedClient;
@@ -696,30 +511,24 @@ export function productionDeps(): Deps {
     env: (key) => Deno.env.get(key),
     now: () => new Date(),
     async consumeRate(key, window, limit) {
-      const { data, error } = await serviceClient().rpc(
-        "tidynote_consume_rate",
-        {
-          p_key: key,
-          p_window: window,
-          p_limit: limit,
-        },
-      );
+      const { data, error } = await serviceClient().rpc('tidynote_consume_rate', {
+        p_key: key,
+        p_window: window,
+        p_limit: limit,
+      });
       if (error) throw new Error(error.message);
       return data === true;
     },
     async consumeQuota(userId, month, limit) {
-      const { data, error } = await serviceClient().rpc(
-        "tidynote_consume_quota",
-        {
-          p_user_id: userId,
-          p_month: month,
-          p_limit: limit,
-        },
-      );
+      const { data, error } = await serviceClient().rpc('tidynote_consume_quota', {
+        p_user_id: userId,
+        p_month: month,
+        p_limit: limit,
+      });
       if (error) throw new Error(error.message);
       // A set-returning function arrives as an array of rows.
       const row = Array.isArray(data) ? data[0] : data;
-      if (!row) throw new Error("tidynote_consume_quota returned no row");
+      if (!row) throw new Error('tidynote_consume_quota returned no row');
       return { allowed: row.allowed === true, used: Number(row.used ?? 0) };
     },
   };
