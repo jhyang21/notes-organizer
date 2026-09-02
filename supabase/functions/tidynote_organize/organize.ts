@@ -370,6 +370,23 @@ function collapseWhitespace(text: string): string {
   return text.split(/\s+/).filter((part) => part.length > 0).join(' ');
 }
 
+/** The same collapse, but line by line: horizontal whitespace inside a line
+ * folds to single spaces and the line is trimmed, blank lines are dropped, and
+ * the surviving lines rejoin with newlines.
+ *
+ * Only `paragraph` items get this. A line break inside prose is usually the
+ * writer's -- a greeting, a sign-off, an address, a line of verse -- and the
+ * full collapse turned "Best,\nDana" into "Best, Dana". Bullets, checklist and
+ * numbered items are single lines by construction, so they keep the full
+ * collapse. */
+function collapseParagraph(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => line.replace(/[^\S\n]+/g, ' ').trim())
+    .filter((line) => line.length > 0)
+    .join('\n');
+}
+
 /** Cuts `text` to `maxLength` characters at the last word boundary within
  * that limit, rather than mid-word -- no ellipsis. Mirrors
  * `TextShaping.truncate` in NotesOrganizerKit. */
@@ -430,10 +447,13 @@ export function sanitizeNote(note: OrganizedNote): OrganizedNote {
     }
 
     const isChecklist = section.kind === 'checklist';
+    const isParagraph = section.kind === 'paragraph';
     const cleaned: NoteItem[] = [];
     let previousKey: string | null = null;
     for (const item of section.items) {
-      const text = collapseWhitespace(item.text);
+      const text = isParagraph
+        ? collapseParagraph(item.text)
+        : collapseWhitespace(item.text);
       if (text.length === 0) continue;
       const key = dedupKey(text);
       if (previousKey !== null && key === previousKey) continue; // adjacent duplicate

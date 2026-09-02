@@ -378,6 +378,54 @@ Deno.test('sanitizeNote: summary equal to title (case-insensitive) is dropped', 
   assertEquals(sanitized.summary, '');
 });
 
+Deno.test('sanitizeNote: a paragraph item keeps its line breaks', () => {
+  const note: OrganizedNote = {
+    title: 'T',
+    summary: '',
+    sections: [{
+      heading: '',
+      kind: 'paragraph',
+      items: [
+        { text: 'Best,\n  Dana  ', done: false },
+        // Blank lines inside an item go; the lines around them stay separate.
+        { text: '  Hi   Marcus,\n\n\nThanks   for the time.\n\n', done: false },
+        { text: '\n  \n', done: false },
+      ],
+    }],
+  };
+  const sanitized = sanitizeNote(note);
+  assertEquals(sanitized.sections[0].items.length, 2);
+  assertEquals(sanitized.sections[0].items[0].text, 'Best,\nDana');
+  assertEquals(
+    sanitized.sections[0].items[1].text,
+    'Hi Marcus,\nThanks for the time.',
+  );
+});
+
+Deno.test('sanitizeNote: a newline in a bullets item is still collapsed to a space', () => {
+  const note: OrganizedNote = {
+    title: 'T',
+    summary: '',
+    sections: [
+      { heading: '', kind: 'bullets', items: [{ text: 'a\nb', done: false }] },
+      {
+        heading: '',
+        kind: 'checklist',
+        items: [{ text: 'call\nAlex', done: false }],
+      },
+      {
+        heading: '',
+        kind: 'numbered',
+        items: [{ text: 'boil\nthe pasta', done: false }],
+      },
+    ],
+  };
+  const sanitized = sanitizeNote(note);
+  assertEquals(sanitized.sections[0].items[0].text, 'a b');
+  assertEquals(sanitized.sections[1].items[0].text, 'call Alex');
+  assertEquals(sanitized.sections[2].items[0].text, 'boil the pasta');
+});
+
 Deno.test('sanitizeNote: done is reset to false outside checklist sections', () => {
   const note: OrganizedNote = {
     title: 'T',

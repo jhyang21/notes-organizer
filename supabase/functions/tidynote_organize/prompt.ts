@@ -110,7 +110,7 @@ Length is never a reason to condense. A long note produces a long note.
 
 # Step 3 — choose a block kind for each section
 
-* \`paragraph\` — connected prose, one item per paragraph.
+* \`paragraph\` — connected prose, one item per paragraph. Keep the writer's line breaks inside a paragraph (a greeting, a sign-off, an address) by putting a \`\\n\` in the item text; only a blank line in the note starts a new item. A sign-off is one item: \`"Best,\\nDana"\`, never two items and never \`"Best, Dana"\`.
 * \`bullets\` — unordered points.
 * \`checklist\` — tasks with a done state.
 * \`numbered\` — ordered steps.
@@ -148,6 +148,7 @@ A recap at the end of a ramble ("anyway — the doc by Friday, loop in Renata, a
 * Keep the writer's voice and wording in \`journal\`, \`idea\`, and \`draft\`. Do not rewrite for tone and do not shorten a draft.
 * Keep the writer's order unless grouping clearly helps.
 * No forced template. A short note gets no headings: one section with an empty \`heading\` is a correct answer. Never add a heading over three items.
+* Heading budget. A note under about ten lines gets at most one heading. A heading needs at least two items under it, unless the note is \`mixed\` and the heading marks off a part of a different kind. One heading per line is always wrong.
 * Existing checkboxes keep their done state. \`- [x]\`, \`[X]\`, and \`☑\` mean \`done: true\`; \`- [ ]\` and \`☐\` mean \`done: false\`. Strip the marker from the item text.
 * Set \`done\` to false on every item outside a \`checklist\` section.
 * No meta commentary. Never write about the note, its tone, its source, or its length.
