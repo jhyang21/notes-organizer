@@ -23,7 +23,9 @@ public struct UnavailableView: View {
     /// - Parameter inShareExtension: subscribing and getting started both
     ///   happen in the app and nowhere else. Set this where the app's screens
     ///   can't be reached, and those two dead ends say where the switch lives
-    ///   instead of showing a button that couldn't work.
+    ///   instead of showing a button that couldn't work. It also picks the
+    ///   vocabulary for `emptyTranscript`: shared text here, a recording in the
+    ///   app, which are the two ways to arrive at it.
     /// - Parameter onOpenApp: opens the app at the link handed to it. Where the
     ///   host can hand off, the two share-extension hints become the buttons
     ///   they describe; `nil` keeps the hint, which is what a host that can't
