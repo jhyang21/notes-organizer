@@ -146,7 +146,7 @@ public struct UnavailableView: View {
         switch failure {
         case .emptyTranscript:
             if inShareExtension {
-                String(localized: "There's not enough text to organize.", bundle: .module)
+                String(localized: "Not enough text to organize", bundle: .module)
             } else {
                 String(localized: "Nothing to tidy", bundle: .module)
             }
