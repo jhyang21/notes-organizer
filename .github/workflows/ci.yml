@@ -73,3 +73,13 @@ jobs:
           xcodebuild test \
             -scheme NotesOrganizerKit \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}"
+
+  edge-function:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno check supabase/functions/tidynote_organize/index.ts
+      - run: deno test --allow-net --allow-env supabase/functions/tidynote_organize/

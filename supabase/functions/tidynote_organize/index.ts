@@ -16,7 +16,7 @@
 // length of the transcription call and is written nowhere.
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.56.0';
-import { SYSTEM_PROMPT } from './prompt.ts';
+import { type Classification, type OrganizedNote, organizeText, type TokenUsage } from './organize.ts';
 
 const MAX_TEXT_CHARS = 60_000;
 const APP_USER_ID_PATTERN = /^[A-Za-z0-9:_\-.]{8,80}$/;
@@ -39,7 +39,6 @@ const USER_REQUESTS_PER_MINUTE = 6;
 const IP_REQUESTS_PER_MINUTE = 20;
 
 const ENTITLEMENT_CACHE_TTL_MS = 5 * 60 * 1000;
-const OPENAI_TIMEOUT_MS = 60_000;
 const DEFAULT_MODEL = 'gpt-5-mini';
 const WHISPER_TIMEOUT_MS = 45_000;
 const DEFAULT_WHISPER_MODEL = 'whisper-1';
@@ -56,14 +55,6 @@ const CORS_HEADERS: Record<string, string> = {
 // ---------------------------------------------------------------------------
 // Wire types
 // ---------------------------------------------------------------------------
-
-/** Mirrors `OrganizedNote` in NotesOrganizerKit. The domain model is the wire
- * format -- there is no DTO layer, so these two must not drift. */
-export interface OrganizedNote {
-  title: string;
-  sections: { heading: string; bullets: string[] }[];
-  actionItems: string[];
-}
 
 export interface QuotaState {
   used: number;
@@ -195,124 +186,6 @@ export async function resolvePlan(deps: Deps, appUserId: string): Promise<Plan> 
 }
 
 // ---------------------------------------------------------------------------
-// OpenAI
-// ---------------------------------------------------------------------------
-
-const NOTE_JSON_SCHEMA = {
-  name: 'organized_note',
-  strict: true,
-  schema: {
-    type: 'object',
-    additionalProperties: false,
-    required: ['title', 'sections', 'actionItems'],
-    properties: {
-      title: { type: 'string' },
-      sections: {
-        type: 'array',
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['heading', 'bullets'],
-          properties: {
-            heading: { type: 'string' },
-            bullets: { type: 'array', items: { type: 'string' } },
-          },
-        },
-      },
-      actionItems: { type: 'array', items: { type: 'string' } },
-    },
-  },
-} as const;
-
-/** gpt-5 and o-series reject any temperature but the default. The model is
- * env-swappable, so decide per request rather than assuming one family. */
-function supportsTemperature(model: string): boolean {
-  return !/^(gpt-5|o\d)/i.test(model);
-}
-
-export function parseNote(raw: string): OrganizedNote {
-  const parsed = JSON.parse(raw) as Record<string, unknown>;
-  const sections = Array.isArray(parsed.sections) ? parsed.sections : [];
-  const actionItems = Array.isArray(parsed.actionItems) ? parsed.actionItems : [];
-  return {
-    title: typeof parsed.title === 'string' ? parsed.title : '',
-    sections: sections.map((section) => {
-      const value = (section ?? {}) as Record<string, unknown>;
-      const bullets = Array.isArray(value.bullets) ? value.bullets : [];
-      return {
-        heading: typeof value.heading === 'string' ? value.heading : '',
-        bullets: bullets.filter((bullet): bullet is string => typeof bullet === 'string'),
-      };
-    }),
-    actionItems: actionItems.filter((item): item is string => typeof item === 'string'),
-  };
-}
-
-interface OrganizeOutcome {
-  note: OrganizedNote;
-  usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
-}
-
-async function organize(deps: Deps, text: string, model: string, apiKey: string): Promise<OrganizeOutcome> {
-  const body: Record<string, unknown> = {
-    model,
-    messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
-      { role: 'user', content: `<transcript>${text}</transcript>` },
-    ],
-    response_format: { type: 'json_schema', json_schema: NOTE_JSON_SCHEMA },
-  };
-  if (supportsTemperature(model)) body.temperature = 0.2;
-
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
-
-  let response: Response;
-  try {
-    response = await deps.fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-
-    // The model name comes from an env var so it can be swapped without a
-    // deploy. If the new model turns out to reject `temperature`, retry once
-    // without it rather than making the swap a code change.
-    if (response.status === 400 && body.temperature !== undefined) {
-      const detail = await response.text();
-      if (detail.toLowerCase().includes('temperature')) {
-        delete body.temperature;
-        response = await deps.fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${apiKey}` },
-          body: JSON.stringify(body),
-          signal: controller.signal,
-        });
-      } else {
-        throw new Error(`openai status 400: ${detail.slice(0, 200)}`);
-      }
-    }
-
-    if (!response.ok) {
-      const detail = await response.text();
-      throw new Error(`openai status ${response.status}: ${detail.slice(0, 200)}`);
-    }
-
-    const payload = await response.json();
-    const message = payload?.choices?.[0]?.message;
-    if (message?.refusal) throw new Error('model refused the transcript');
-    const content = message?.content;
-    if (typeof content !== 'string' || content.length === 0) {
-      throw new Error('empty completion content');
-    }
-    return { note: parseNote(content), usage: payload?.usage };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Whisper
 // ---------------------------------------------------------------------------
 
@@ -366,7 +239,9 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   let userTag = 'none';
   let status = 500;
   let code: string | undefined;
-  let usage: OrganizeOutcome['usage'];
+  let usage: TokenUsage | undefined;
+  let classification: Classification | undefined;
+  let note: OrganizedNote | undefined;
   let mode: 'text' | 'voice' = 'text';
   let audioBytes: number | undefined;
   const model = deps.env('TIDYNOTE_OPENAI_MODEL') || DEFAULT_MODEL;
@@ -561,9 +436,11 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     }
 
     // --- organize ---------------------------------------------------------
-    let outcome: OrganizeOutcome;
     try {
-      outcome = await organize(deps, text, model, openAiKey);
+      const outcome = await organizeText(deps.fetch, openAiKey, text, model, mode === 'voice' ? 'voice' : 'shared');
+      note = outcome.note;
+      classification = outcome.classification;
+      usage = outcome.usage;
     } catch (error) {
       console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'upstream_failed', message: String(error) }));
       status = 502;
@@ -571,13 +448,14 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
       return errorResponse(code, 'The tidy service could not organize this note.', status);
     }
 
-    usage = outcome.usage;
     status = 200;
     // The transcript is returned only to the caller who sent audio -- it is the
     // one thing they have no other copy of. A JSON caller already holds its own
-    // text, so its response shape is unchanged.
+    // text, so its response shape is unchanged. `note` is title/summary/sections
+    // only -- classification (`noteKind`, `level`) steered the model and is
+    // logged below, but it never reaches the client.
     return jsonResponse(
-      { note: outcome.note, quota: quotaState(used, limit, month), plan, ...(mode === 'voice' ? { transcript: text } : {}) },
+      { note, quota: quotaState(used, limit, month), plan, ...(mode === 'voice' ? { transcript: text } : {}) },
       200,
     );
   } catch (error) {
@@ -601,6 +479,8 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
         model,
         ...(audioBytes !== undefined ? { audio_bytes: audioBytes } : {}),
         ...(code ? { code } : {}),
+        ...(classification ? { note_kind: classification.noteKind, level: classification.level } : {}),
+        ...(note ? { sections: note.sections.length } : {}),
         ...(usage?.prompt_tokens !== undefined ? { prompt_tokens: usage.prompt_tokens } : {}),
         ...(usage?.completion_tokens !== undefined ? { completion_tokens: usage.completion_tokens } : {}),
         ...(usage?.total_tokens !== undefined ? { total_tokens: usage.total_tokens } : {}),

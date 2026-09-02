@@ -6,30 +6,36 @@
 import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import {
   type Deps,
-  type OrganizedNote,
   _resetEntitlementCache,
   clientIp,
   handleRequest,
   minuteKey,
   monthKey,
-  parseNote,
   resolvePlan,
   sha256Hex,
 } from './index.ts';
+import type { OrganizedNote } from './organize.ts';
 
 const VALID_USER = 'tidy:11111111-2222-3333-4444-555555555555';
 const FIXED_NOW = new Date('2026-08-07T14:03:22.000Z');
 
 const SAMPLE_NOTE: OrganizedNote = {
   title: 'Dentist and Sarah Birthday',
-  sections: [{ heading: 'To Do', bullets: ['Call the dentist tomorrow'] }],
-  actionItems: ['Call the dentist tomorrow'],
+  summary: '',
+  sections: [
+    { heading: 'To Do', kind: 'checklist', items: [{ text: 'Call the dentist tomorrow', done: false }] },
+  ],
 };
 
-function openAiSuccess(note: unknown = SAMPLE_NOTE): Response {
+/** The stubbed completion content: the model's raw output, classification
+ * included. The handler must strip `noteKind`/`level` before it reaches the
+ * client -- see "classification never reaches the app" below. */
+const SAMPLE_COMPLETION = { noteKind: 'tasks', level: 2, ...SAMPLE_NOTE };
+
+function openAiSuccess(completion: unknown = SAMPLE_COMPLETION): Response {
   return new Response(
     JSON.stringify({
-      choices: [{ message: { content: JSON.stringify(note) } }],
+      choices: [{ message: { content: JSON.stringify(completion) } }],
       usage: { prompt_tokens: 120, completion_tokens: 60, total_tokens: 180 },
     }),
     { status: 200, headers: { 'Content-Type': 'application/json' } },
@@ -147,13 +153,6 @@ Deno.test('sha256Hex is stable hex', async () => {
     await sha256Hex('abc'),
     'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
   );
-});
-
-Deno.test('parseNote tolerates missing and mistyped fields', () => {
-  const note = parseNote(JSON.stringify({ title: 'T', sections: [{ heading: 'H', bullets: ['a', 7] }] }));
-  assertEquals(note.title, 'T');
-  assertEquals(note.sections[0].bullets, ['a']);
-  assertEquals(note.actionItems, []);
 });
 
 // ---------------------------------------------------------------------------
@@ -398,7 +397,34 @@ Deno.test('a successful tidy returns note, quota and plan', async () => {
   assertEquals(body.plan, 'free');
 });
 
-Deno.test('the upstream request carries the model, the ported prompt and the wrapped transcript', async () => {
+Deno.test('note is sanitized before it leaves', async () => {
+  _resetEntitlementCache();
+  const dirty = {
+    noteKind: 'list',
+    level: 2,
+    title: 'Groceries',
+    summary: '',
+    sections: [{
+      heading: 'Store',
+      kind: 'bullets',
+      items: [{ text: 'Buy milk', done: false }, { text: 'Buy milk', done: false }],
+    }],
+  };
+  const { deps } = makeDeps({ fetchImpl: () => Promise.resolve(openAiSuccess(dirty)) });
+  const response = await handleRequest(makeRequest({ text: 'call the dentist', appUserId: VALID_USER }), deps);
+  const body = await response.json();
+  assertEquals(body.note.sections[0].items, [{ text: 'Buy milk', done: false }]);
+});
+
+Deno.test('classification never reaches the app', async () => {
+  _resetEntitlementCache();
+  const { deps } = makeDeps();
+  const response = await handleRequest(makeRequest({ text: 'call the dentist', appUserId: VALID_USER }), deps);
+  const body = await response.json();
+  assertEquals(Object.keys(body.note).sort(), ['sections', 'summary', 'title']);
+});
+
+Deno.test('the upstream request carries the model and wraps the text with its source', async () => {
   const { deps, calls } = makeDeps({ env: { OPENAI_API_KEY: 'sk-test', TIDYNOTE_OPENAI_MODEL: 'gpt-4o-mini' } });
   await handleRequest(makeRequest({ text: 'call the dentist', appUserId: VALID_USER }), deps);
 
@@ -406,11 +432,7 @@ Deno.test('the upstream request carries the model, the ported prompt and the wra
   assertEquals(call.url, 'https://api.openai.com/v1/chat/completions');
   const sent = JSON.parse(String(call.init?.body));
   assertEquals(sent.model, 'gpt-4o-mini');
-  assertEquals(sent.response_format.json_schema.strict, true);
-  assertEquals(sent.response_format.json_schema.schema.required, ['title', 'sections', 'actionItems']);
-  assertEquals(sent.messages[1].content, '<transcript>call the dentist</transcript>');
-  assertStringIncludes(sent.messages[0].content, 'organizer, not a summarizer');
-  assertStringIncludes(sent.messages[0].content, 'Length is never a reason to summarize');
+  assertEquals(sent.messages[1].content, '<note source="shared">\ncall the dentist\n</note>');
   // A model outside the reasoning families takes the low temperature.
   assertEquals(sent.temperature, 0.2);
 });
@@ -527,7 +549,7 @@ Deno.test('a voice tidy charges once, then organizes what Whisper heard', async 
   assertEquals(calls.fetch[0].url, 'https://api.openai.com/v1/audio/transcriptions');
   assertEquals(calls.fetch[1].url, 'https://api.openai.com/v1/chat/completions');
   const sent = JSON.parse(String(calls.fetch[1].init?.body));
-  assertEquals(sent.messages[1].content, `<transcript>${TRANSCRIPT}</transcript>`);
+  assertEquals(sent.messages[1].content, `<note source="voice">\n${TRANSCRIPT}\n</note>`);
 });
 
 Deno.test('the Whisper request carries the file, the model, plain text and the style prompt', async () => {
