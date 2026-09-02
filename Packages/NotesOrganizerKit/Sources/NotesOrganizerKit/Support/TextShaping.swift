@@ -1,7 +1,7 @@
 import Foundation
 
 /// The small text operations the sanitizer needs. One definition each, so a
-/// note's title, its headings, and its bullets are cut and collapsed the same
+/// note's title, its headings, and its items are cut and collapsed the same
 /// way.
 ///
 /// The length limits stay with their callers: each is an independent limit
