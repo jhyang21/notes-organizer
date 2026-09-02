@@ -68,9 +68,11 @@ public struct UnavailableView: View {
             retryButton(title: String(localized: "Try Again", bundle: .module))
 
         case .emptyTranscript:
-            if inShareExtension {
-                retryButton(title: String(localized: "Try Again", bundle: .module))
-            } else {
+            // In the extension the text is fixed — resubmitting the same words
+            // hits the same gate, so no button; the message says what to
+            // change. A new recording can genuinely differ, so the app offers
+            // one.
+            if !inShareExtension {
                 retryButton(title: String(localized: "Record Again", bundle: .module))
             }
 

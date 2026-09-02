@@ -84,7 +84,7 @@ struct CaptureScreen: View {
         .sheet(isPresented: $isShowingPaywall, onDismiss: { viewModel.refreshPlan() }) {
             PaywallScreen()
         }
-        .sheet(isPresented: $isShowingHowToTidy) { HowToTidyView() }
+        .sheet(isPresented: $isShowingHowToTidy) { HowToTidyScreen() }
         // Full screen rather than a sheet: there is nothing behind it to use
         // yet, and nothing to swipe it away for.
         .fullScreenCover(isPresented: $viewModel.isShowingFirstRun) {

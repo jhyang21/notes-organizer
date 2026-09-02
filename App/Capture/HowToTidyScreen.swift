@@ -4,7 +4,7 @@ import SwiftUI
 /// on its own — the share sheet (Notes → Share → Send Copy → TidyNote) is the
 /// only path in. This screen teaches that path rather than the app pretending
 /// it has another one.
-struct HowToTidyView: View {
+struct HowToTidyScreen: View {
     @Environment(\.dismiss) private var dismiss
     @ScaledMetric(relativeTo: .body) private var symbolWidth: CGFloat = 28
 
@@ -56,5 +56,5 @@ struct HowToTidyView: View {
 }
 
 #Preview {
-    HowToTidyView()
+    HowToTidyScreen()
 }
