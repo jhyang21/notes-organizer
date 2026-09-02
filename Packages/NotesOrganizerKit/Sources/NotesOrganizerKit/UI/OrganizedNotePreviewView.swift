@@ -40,6 +40,7 @@ public struct OrganizedNotePreviewView: View {
         }
     }
 
+    @ViewBuilder
     private func sectionView(_ section: NoteSection) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             if !section.heading.isEmpty {
@@ -47,10 +48,27 @@ public struct OrganizedNotePreviewView: View {
                     .font(.headline)
                     .accessibilityAddTraits(.isHeader)
             }
-            ForEach(Array(section.items.enumerated()), id: \.offset) { index, item in
-                itemView(item, at: index, kind: section.kind)
+            if section.kind == .verbatim {
+                verbatimBlock(section.items)
+            } else {
+                ForEach(Array(section.items.enumerated()), id: \.offset) { index, item in
+                    itemView(item, at: index, kind: section.kind)
+                }
             }
         }
+    }
+
+    /// A verbatim section is one block, not a box per line: the lines are a
+    /// password, a snippet, a pasted quote, and they hold together. Drawing
+    /// them as one piece of text is also what makes a blank line inside the
+    /// block read as a blank line.
+    private func verbatimBlock(_ items: [NoteItem]) -> some View {
+        Text(items.map(\.text).joined(separator: "\n"))
+            .font(.body.monospaced())
+            .textSelection(.enabled)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(8)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
     }
 
     @ViewBuilder
@@ -75,17 +93,12 @@ public struct OrganizedNotePreviewView: View {
                     .foregroundStyle(.secondary)
                     .monospacedDigit()
             }
-        case .paragraph:
+        case .paragraph, .verbatim:
+            // Prose, with its line breaks drawn as line breaks. A verbatim
+            // section never arrives here — `sectionView` draws it whole.
             Text(item.text)
                 .font(.body)
                 .frame(maxWidth: .infinity, alignment: .leading)
-        case .verbatim:
-            Text(item.text)
-                .font(.body.monospaced())
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(8)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
         }
     }
 

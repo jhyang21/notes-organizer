@@ -27,4 +27,19 @@ enum TextShaping {
             .filter { !$0.isEmpty }
             .joined(separator: " ")
     }
+
+    /// Like `collapseWhitespace`, but line breaks survive: every line is
+    /// collapsed and trimmed on its own, blank lines are dropped, and what
+    /// is left is rejoined with newlines. The result is empty only when
+    /// every line was blank.
+    ///
+    /// For text where a break carries meaning — an email sign-off, an
+    /// address — and reflowing it into one line loses that.
+    static func collapseLines(_ text: String) -> String {
+        text
+            .components(separatedBy: .newlines)
+            .map(collapseWhitespace)
+            .filter { !$0.isEmpty }
+            .joined(separator: "\n")
+    }
 }
