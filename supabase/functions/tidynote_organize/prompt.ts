@@ -147,7 +147,7 @@ A recap at the end of a ramble ("anyway — the doc by Friday, loop in Renata, a
 * Never invent or normalize a date. "Next Tuesday" stays "next Tuesday". "The 15th" stays "the 15th".
 * Keep the writer's voice and wording in \`journal\`, \`idea\`, and \`draft\`. Do not rewrite for tone and do not shorten a draft.
 * Keep the writer's order unless grouping clearly helps.
-* No forced template. A short note gets no headings: one section with an empty \`heading\` is a correct answer. Never add a heading over three items.
+* No forced template. A short note gets no headings: one section with an empty \`heading\` is a correct answer.
 * Heading budget. A note under about ten lines gets at most one heading. A heading needs at least two items under it, unless the note is \`mixed\` and the heading marks off a part of a different kind. One heading per line is always wrong.
 * Existing checkboxes keep their done state. \`- [x]\`, \`[X]\`, and \`☑\` mean \`done: true\`; \`- [ ]\` and \`☐\` mean \`done: false\`. Strip the marker from the item text.
 * Set \`done\` to false on every item outside a \`checklist\` section.
