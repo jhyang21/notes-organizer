@@ -22,6 +22,17 @@ Name and subtitle live on the `appInfoLocalization`; the URLs above live on the
 `appStoreVersionLocalization`, except the privacy policy URL, which lives on the
 `appInfoLocalization`.
 
+## Pushing to App Store Connect
+
+`scripts/asc_metadata.py` pushes the promotional text, keywords, description
+and App Review notes below to the objects listed at the end of this file. It
+reads the fenced blocks here, PATCHes only the fields that differ, then reads
+each one back and stops unless the live value is byte-identical. Set
+`ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8` (the path to the `.p8` key) and
+run `check` first, then `push`. The `review-screenshots` command replaces the
+two subscription review screenshots. Name and subtitle change rarely and are
+still edited by hand.
+
 ## Promotional text (170 max)
 
 ```
