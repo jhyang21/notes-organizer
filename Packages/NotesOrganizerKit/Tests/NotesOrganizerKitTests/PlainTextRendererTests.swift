@@ -94,6 +94,22 @@ struct PlainTextRendererTests {
         """)
     }
 
+    @Test("a paragraph's own line breaks come through as line breaks")
+    func paragraphKeepsItsLineBreaks() {
+        let note = OrganizedNote(title: "Reply", sections: [
+            NoteSection(heading: "", kind: .paragraph, items: ["Thanks for the update.", "Best,\nDana"]),
+        ])
+
+        #expect(PlainTextRenderer.render(note) == """
+        Reply
+
+        Thanks for the update.
+
+        Best,
+        Dana
+        """)
+    }
+
     @Test("numbering restarts in every section")
     func numberingRestartsPerSection() {
         let note = OrganizedNote(title: "Two Jobs", sections: [
@@ -121,6 +137,15 @@ struct PlainTextRendererTests {
         ])
 
         #expect(PlainTextRenderer.render(note) == "Wi-Fi\n\nPass:  x7 Q!9\n  indented")
+    }
+
+    @Test("a blank line inside a verbatim block is drawn as a blank line")
+    func verbatimKeepsAnInteriorBlankLine() {
+        let note = OrganizedNote(title: "Snippet", sections: [
+            NoteSection(heading: "", kind: .verbatim, items: ["func go() {", "", "    return 1", "}"]),
+        ])
+
+        #expect(PlainTextRenderer.render(note) == "Snippet\n\nfunc go() {\n\n    return 1\n}")
     }
 
     @Test("renders a fully empty note as an empty string")

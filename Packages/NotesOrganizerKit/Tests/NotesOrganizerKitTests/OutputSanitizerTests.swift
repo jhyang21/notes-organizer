@@ -83,6 +83,85 @@ struct OutputSanitizerSanitizeTests {
         #expect(sanitized.sections[0].items.map(\.text) == ["Pass:  x7 Q!9", "  indented  "])
     }
 
+    @Test("a verbatim block keeps the blank lines inside it")
+    func keepsInteriorVerbatimBlanks() {
+        let note = OrganizedNote(sections: [
+            NoteSection(heading: "Snippet", kind: .verbatim, items: ["func go() {", "", "    return 1", "}"]),
+        ])
+
+        let sanitized = OutputSanitizer.sanitize(note)
+
+        #expect(sanitized.sections[0].items.map(\.text) == ["func go() {", "", "    return 1", "}"])
+    }
+
+    @Test("a verbatim block loses only the blank lines at its two ends")
+    func trimsVerbatimEnds() {
+        let note = OrganizedNote(sections: [
+            NoteSection(heading: "Quote", kind: .verbatim, items: ["", "  ", "First", "", "Last", "   ", ""]),
+        ])
+
+        let sanitized = OutputSanitizer.sanitize(note)
+
+        #expect(sanitized.sections[0].items.map(\.text) == ["First", "", "Last"])
+    }
+
+    @Test("an all-blank verbatim section still goes")
+    func dropsAnAllBlankVerbatimSection() {
+        let note = OrganizedNote(sections: [
+            NoteSection(heading: "Nothing", kind: .verbatim, items: ["", "   ", "\n"]),
+            NoteSection(heading: "Real", items: ["Keep"]),
+        ])
+
+        #expect(OutputSanitizer.sanitize(note).sections.map(\.heading) == ["Real"])
+    }
+
+    // MARK: - Paragraphs
+
+    @Test("a paragraph keeps its line breaks and trims each line")
+    func keepsParagraphLineBreaks() {
+        let note = OrganizedNote(sections: [
+            NoteSection(heading: "Sign-off", kind: .paragraph, items: ["  Best,  \n   Dana \n"]),
+        ])
+
+        let sanitized = OutputSanitizer.sanitize(note)
+
+        #expect(sanitized.sections[0].items.map(\.text) == ["Best,\nDana"])
+    }
+
+    @Test("a paragraph drops the blank lines between its lines")
+    func dropsParagraphBlankLines() {
+        let note = OrganizedNote(sections: [
+            NoteSection(heading: "Address", kind: .paragraph, items: ["\n\n12   Mill  Lane\n \n Oxford\n\n"]),
+        ])
+
+        let sanitized = OutputSanitizer.sanitize(note)
+
+        #expect(sanitized.sections[0].items.map(\.text) == ["12 Mill Lane\nOxford"])
+    }
+
+    @Test("a paragraph item of nothing but blank lines goes")
+    func dropsAnAllBlankParagraphItem() {
+        let note = OrganizedNote(sections: [
+            NoteSection(heading: "Notes", kind: .paragraph, items: ["Keep", " \n \n ", "Also keep"]),
+        ])
+
+        let sanitized = OutputSanitizer.sanitize(note)
+
+        #expect(sanitized.sections[0].items.map(\.text) == ["Keep", "Also keep"])
+    }
+
+    @Test("every other kind still collapses newlines into one line")
+    func collapsesNewlinesOutsideParagraphs() {
+        let kinds: [SectionKind] = [.bullets, .checklist, .numbered]
+        let note = OrganizedNote(sections: kinds.map {
+            NoteSection(heading: "H", kind: $0, items: ["one\ntwo   three"])
+        })
+
+        let sanitized = OutputSanitizer.sanitize(note)
+
+        #expect(sanitized.sections.map { $0.items[0].text } == Array(repeating: "one two three", count: kinds.count))
+    }
+
     // MARK: - done
 
     @Test("a checklist keeps what is done")
