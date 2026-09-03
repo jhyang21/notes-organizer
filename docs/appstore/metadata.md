@@ -22,6 +22,17 @@ Name and subtitle live on the `appInfoLocalization`; the URLs above live on the
 `appStoreVersionLocalization`, except the privacy policy URL, which lives on the
 `appInfoLocalization`.
 
+## Pushing to App Store Connect
+
+`scripts/asc_metadata.py` pushes the promotional text, keywords, description
+and App Review notes below to the objects listed at the end of this file. It
+reads the fenced blocks here, PATCHes only the fields that differ, then reads
+each one back and stops unless the live value is byte-identical. Set
+`ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_P8` (the path to the `.p8` key) and
+run `check` first, then `push`. The `review-screenshots` command replaces the
+two subscription review screenshots. Name and subtitle change rarely and are
+still edited by hand.
+
 ## Promotional text (170 max)
 
 ```
@@ -153,7 +164,8 @@ subscription product, and is already uploaded (see below).
 
 ## What is already in App Store Connect
 
-App `6799307936`, all written through the API on 2026-08-08.
+App `6799307936`, all written through the API on 2026-08-08; the listing
+text and the review screenshots were last pushed on 2026-09-03.
 
 | Object | ID | State |
 |---|---|---|
@@ -162,14 +174,14 @@ App `6799307936`, all written through the API on 2026-08-08.
 | en-US app info localization | `2aec22f3-5190-40a8-9837-383aa308fbd0` | name, subtitle, privacy policy URL |
 | App Review detail | `eb9ff962-5d41-4c12-8ed1-d3c70a7b7450` | Andrew Yang, demo account not required |
 | Age rating declaration | `c1e60ebf-8dde-4035-9330-149646af5b69` | every question answered none/false → 4+ |
-| Review screenshot, monthly | `c5587cc8-d0d5-42bc-b96f-6bec9b80883d` | delivered, 1290 × 2796 |
-| Review screenshot, annual | `1c5d8845-71dd-46c0-be77-c70a7289cbdc` | delivered, 1290 × 2796 |
+| Review screenshot, monthly | `07c5df0c-2d13-4904-a489-28e3e25efa58` | delivered, 1290 × 2796 |
+| Review screenshot, annual | `85dc485e-e5cd-4013-89e4-746f7d6cdd53` | delivered, 1290 × 2796 |
 
 The review contact phone is the one already on file for Andrew on the Relora
 app's review detail in this same account, reused rather than invented.
 
 The subscription review screenshot is a redraw of the published RevenueCat
-paywall carrying the real App Store prices. RevenueCat's own renderer still
+paywall (violet on white since 2026-09-03) carrying the real App Store prices. RevenueCat's own renderer still
 falls back to sample prices ($9.99 / $69.99) because it has not synced the real
 ones from App Store Connect, and a review screenshot showing prices no one will
 ever be charged is a rejection risk. Replace it with a device screenshot of the

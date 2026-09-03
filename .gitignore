@@ -26,3 +26,4 @@ supabase/.temp/
 
 # Live smoke-run outputs (real model calls, regenerated on demand)
 supabase/functions/tidynote_organize/smoke/out/
+__pycache__/
