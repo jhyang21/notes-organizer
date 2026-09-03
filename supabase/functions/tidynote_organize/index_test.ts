@@ -424,7 +424,7 @@ Deno.test('classification never reaches the app', async () => {
   assertEquals(Object.keys(body.note).sort(), ['sections', 'summary', 'title']);
 });
 
-Deno.test('the upstream request carries the model and wraps the text with its source', async () => {
+Deno.test('the upstream request carries the model, the raw note and the source hint', async () => {
   const { deps, calls } = makeDeps({ env: { OPENAI_API_KEY: 'sk-test', TIDYNOTE_OPENAI_MODEL: 'gpt-4o-mini' } });
   await handleRequest(makeRequest({ text: 'call the dentist', appUserId: VALID_USER }), deps);
 

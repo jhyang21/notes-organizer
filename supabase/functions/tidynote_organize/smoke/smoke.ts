@@ -44,11 +44,8 @@ async function loadFixtures(): Promise<Fixture[]> {
 // A tiny port of the client renderer
 // ---------------------------------------------------------------------------
 //
-// Title; then a blank line and the summary if there is one; then per section a
-// blank line, the UPPERCASED heading if there is one, and the items rendered
-// per the section kind. Numbering restarts in every section. Paragraph items
-// are separated by one blank line. Verbatim lines go out exactly as they came.
-// Joined with "\n", no trailing newline.
+// Mirrors `PlainTextRenderer` in NotesOrganizerKit: what the smoke output
+// shows has to be what the app would paste into Apple Notes.
 
 function renderSection(section: NoteSection): string[] {
   const lines: string[] = [];
@@ -82,7 +79,7 @@ function renderSection(section: NoteSection): string[] {
   return lines;
 }
 
-export function renderNote(note: OrganizedNote): string {
+function renderNote(note: OrganizedNote): string {
   const lines: string[] = [note.title];
   if (note.summary.length > 0) {
     lines.push("");
@@ -157,7 +154,6 @@ if (import.meta.main) {
     }
   } catch { /* first run */ }
 
-  const rows: string[] = [];
   for (const fixture of fixtures) {
     let block: string;
     let row: string;
@@ -212,7 +208,6 @@ if (import.meta.main) {
       row = `${fixture.id.padEnd(22)} ERROR ${message}`;
     }
     previous.set(fixture.id, block);
-    rows.push(row);
     console.log(row);
   }
 
@@ -222,5 +217,5 @@ if (import.meta.main) {
   const header = `# smoke: prompt ${args.prompt} (${model})\n`;
   const body = order.map((id) => previous.get(id)).join("\n\n");
   await Deno.writeTextFile(outPath, `${header}\n${body}\n`);
-  console.error(`\nwrote ${outPath.pathname} (${rows.length} fixtures)`);
+  console.error(`\nwrote ${outPath.pathname} (${fixtures.length} fixtures)`);
 }
