@@ -9,6 +9,7 @@ DerivedData/
 
 # Secrets
 *.p8
+.env*
 fastlane/report.xml
 fastlane/README.md
 
