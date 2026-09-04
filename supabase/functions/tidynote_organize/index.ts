@@ -384,11 +384,10 @@ async function withinRate(deps: Deps, key: string, window: string, limit: number
   }
 }
 
-/** What `handleAttest` hands back: the reply, plus the few fields the caller's
- * log line needs. */
+/** What `handleAttest` hands back: the reply, plus the two fields the caller's
+ * log line needs and cannot read off it. */
 interface AttestOutcome {
   response: Response;
-  status: number;
   code?: string;
   userTag?: string;
 }
@@ -409,7 +408,6 @@ interface AttestOutcome {
 async function handleAttest(req: Request, deps: Deps, payload: Record<string, unknown>): Promise<AttestOutcome> {
   const fail = (code: string, message: string, status: number, userTag?: string): AttestOutcome => ({
     response: errorResponse(code, message, status),
-    status,
     code,
     userTag,
   });
@@ -474,7 +472,7 @@ async function handleAttest(req: Request, deps: Deps, payload: Record<string, un
     return fail('attestation_unavailable', 'Verification is unavailable. Try again shortly.', 503, userTag);
   }
 
-  return { response: new Response(null, { status: 204 }), status: 204, userTag };
+  return { response: new Response(null, { status: 204 }), userTag };
 }
 
 export async function handleRequest(req: Request, deps: Deps): Promise<Response> {
@@ -533,7 +531,6 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     // string: key order, whitespace and multipart boundaries would all have to
     // survive a round trip, and none of them are guaranteed to.
     const bodyBytes = new Uint8Array(await req.arrayBuffer());
-    const bodyHash = await sha256Bytes(bodyBytes);
 
     if (mode === 'voice') {
       let form: FormData;
@@ -574,7 +571,7 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
       if (payload.op === 'attest') {
         op = 'attest';
         const outcome = await handleAttest(req, deps, payload as Record<string, unknown>);
-        status = outcome.status;
+        status = outcome.response.status;
         code = outcome.code;
         userTag = outcome.userTag ?? userTag;
         return outcome.response;
@@ -646,7 +643,10 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
 
       let row: AttestKeyRow | null;
       try {
-        row = await deps.getAttestKey(keyIdHeader);
+        // Shape first, so a header of arbitrary length or content never
+        // becomes a query. A key id that cannot exist reads as one that does
+        // not, which is the same 401 either way.
+        row = KEY_ID_PATTERN.test(keyIdHeader) ? await deps.getAttestKey(keyIdHeader) : null;
       } catch (error) {
         // The key store being unreachable is an outage, not a forgery. A 401
         // here would tell a genuine install to throw its hardware key away and
@@ -665,7 +665,9 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
         if (row.app_user_id !== appUserId) throw new Error('key belongs to another app user');
         ({ counter } = await deps.verifyAssertion({
           assertion: assertionHeader,
-          clientDataHash: bodyHash,
+          // The bytes as they arrived. Hashed here rather than beside the read
+          // so a request nobody asked to attest never pays for the digest.
+          clientDataHash: await sha256Bytes(bodyBytes),
           publicKeyJwk: JSON.parse(row.public_key),
           rpId: row.rp_id,
           previousCounter: Number(row.counter ?? 0),
