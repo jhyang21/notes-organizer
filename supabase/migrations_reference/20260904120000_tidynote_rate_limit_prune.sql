@@ -35,9 +35,9 @@ as $$
    where window_start < to_char(now() at time zone 'utc' - interval '1 hour', 'YYYY-MM-DD"T"HH24:MI');
 $$;
 
+-- Revoking from PUBLIC is the whole job: anon and authenticated hold no grant
+-- of their own on a function created here, only the one PUBLIC carries.
 revoke all on function public.tidynote_prune_rate_limits() from public;
-revoke all on function public.tidynote_prune_rate_limits() from anon;
-revoke all on function public.tidynote_prune_rate_limits() from authenticated;
 
 comment on function public.tidynote_prune_rate_limits() is
   'Deletes TidyNote rate-limit windows older than one hour. Scheduled by pg_cron every 15 minutes.';

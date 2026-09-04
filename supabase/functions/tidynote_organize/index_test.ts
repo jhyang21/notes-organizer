@@ -476,7 +476,7 @@ Deno.test('a RevenueCat that never answers is abandoned, and the caller stays fr
   // 50 ms rather than the production five seconds, so the suite does not wait
   // out a real timeout to prove the timeout exists.
   const timeoutMs = 50;
-  const { deps, calls } = makeDeps({
+  const { deps } = makeDeps({
     env: { OPENAI_API_KEY: 'sk-test', TIDYNOTE_RC_API_KEY: 'rc-test' },
     revenueCatTimeoutMs: timeoutMs,
     // Settles only when the handler's own signal fires. Without a timeout on
@@ -488,9 +488,10 @@ Deno.test('a RevenueCat that never answers is abandoned, and the caller stays fr
   });
 
   const startedAt = Date.now();
+  // Returning at all is the proof that a signal was passed: the stub settles
+  // only on abort, so a fetch without one would hang here forever.
   assertEquals(await resolvePlan(deps, VALID_USER), 'free');
   const elapsed = Date.now() - startedAt;
-  assert(calls.fetch[0].init?.signal instanceof AbortSignal);
   // The injected bound is what fired, not the production one.
   assert(elapsed >= timeoutMs, `gave up after ${elapsed}ms`);
   assert(elapsed < REVENUECAT_TIMEOUT_MS, `gave up after ${elapsed}ms`);

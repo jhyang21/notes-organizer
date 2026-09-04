@@ -33,10 +33,8 @@ const FREE_MONTHLY_LIMIT = 5;
 // Pro is unlimited in product terms and stays marketed that way. The counter is
 // an anti-abuse backstop, not a product limit: 500 a month is about 16 a day,
 // which no person reaches by using the app but a script does in an afternoon.
-// It is enforced. Past the ceiling a pro caller gets the same 429 a free one
-// gets, because at that point the traffic is a script, not a customer. A
-// counter that fails outright still lets them through: an outage is not
-// evidence of abuse.
+// It is enforced: past the ceiling a pro caller gets the same 429 a free one
+// gets.
 const PRO_MONTHLY_LIMIT = 500;
 
 // Declared-size ceilings, checked before the body is read at all. The
@@ -459,48 +457,35 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     const month = monthKey(now);
     const limit = plan === 'pro' ? PRO_MONTHLY_LIMIT : FREE_MONTHLY_LIMIT;
 
-    let used: number;
-    if (plan === 'pro') {
-      // A definite "no" from a working counter is honoured: past the ceiling
-      // the traffic is a script on a stolen key, not a customer. A counter that
-      // throws is a different thing, an outage, and must never stand between a
-      // paying user and their note.
-      let result: { allowed: boolean; used: number };
-      try {
-        result = await deps.consumeQuota(appUserId, month, limit);
-      } catch (error) {
+    // A definite "no" from a working counter is honoured on either plan: past
+    // the ceiling the traffic is a script on a stolen key, not a customer.
+    //
+    // A counter that throws is a different thing -- an outage -- and there the
+    // two plans part. For pro it must never stand between a paying user and
+    // their note. For free, failing open would uncap the one spend the quota
+    // exists to cap, so it fails closed and the client offers a retry.
+    let result: { allowed: boolean; used: number };
+    try {
+      result = await deps.consumeQuota(appUserId, month, limit);
+    } catch (error) {
+      if (plan === 'pro') {
         console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'pro_quota_count_failed', message: String(error) }));
         result = { allowed: true, used: 0 };
-      }
-      if (!result.allowed) {
-        status = 429;
-        code = 'quota_exhausted';
-        return errorResponse(code, 'Monthly premium tidies used', status, {
-          quota: quotaState(result.used, limit, month),
-        });
-      }
-      used = result.used;
-    } else {
-      let result: { allowed: boolean; used: number };
-      try {
-        result = await deps.consumeQuota(appUserId, month, limit);
-      } catch (error) {
-        // Failing open here would uncap free spend, which is the one thing the
-        // quota exists to prevent. Fail closed and let the client offer a retry.
+      } else {
         console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'quota_unavailable', message: String(error) }));
         status = 503;
         code = 'quota_unavailable';
         return errorResponse(code, 'Usage service is unavailable. Try again shortly.', status);
       }
-      if (!result.allowed) {
-        status = 429;
-        code = 'quota_exhausted';
-        return errorResponse(code, 'Monthly premium tidies used', status, {
-          quota: quotaState(result.used, limit, month),
-        });
-      }
-      used = result.used;
     }
+    if (!result.allowed) {
+      status = 429;
+      code = 'quota_exhausted';
+      return errorResponse(code, 'Monthly premium tidies used', status, {
+        quota: quotaState(result.used, limit, month),
+      });
+    }
+    const used = result.used;
 
     // --- transcribe -------------------------------------------------------
     const openAiKey = deps.env('OPENAI_API_KEY');
