@@ -14,7 +14,12 @@ import WidgetKit
 struct TidyControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "com.immform.notesorganizer.widgets.tidy") {
-            ControlWidgetButton(action: OpenURLIntent(QuickCaptureLink.record.url)) {
+            // Read inside the closure so every render picks up the token the
+            // last launch minted. Without one the control still opens the app,
+            // it just doesn't start recording.
+            let url = QuickCaptureToken.current().map(QuickCaptureLink.recordURL(token:))
+                ?? QuickCaptureLink.open.url
+            ControlWidgetButton(action: OpenURLIntent(url)) {
                 Label("Start a Tidy", systemImage: "mic.fill")
             }
         }
