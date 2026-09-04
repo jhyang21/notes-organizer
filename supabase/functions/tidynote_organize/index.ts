@@ -81,6 +81,9 @@ export interface Deps {
   now(): Date;
   consumeRate(key: string, window: string, limit: number): Promise<boolean>;
   consumeQuota(userId: string, month: string, limit: number): Promise<{ allowed: boolean; used: number }>;
+  /** Overrides REVENUECAT_TIMEOUT_MS. Only the timeout test sets it, so its
+   * hang does not cost the suite five real seconds. Production leaves it out. */
+  revenueCatTimeoutMs?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -244,7 +247,10 @@ export async function resolvePlan(deps: Deps, appUserId: string): Promise<Plan> 
       `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`,
       // Without a bound, a RevenueCat that accepts the connection and then
       // stalls holds this request open until the platform kills it.
-      { headers: { Authorization: `Bearer ${apiKey}` }, signal: AbortSignal.timeout(REVENUECAT_TIMEOUT_MS) },
+      {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(deps.revenueCatTimeoutMs ?? REVENUECAT_TIMEOUT_MS),
+      },
     );
     // A transient RevenueCat error is not evidence about this user, so it is
     // never cached -- the next request asks again.

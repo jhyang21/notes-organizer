@@ -56,6 +56,7 @@ interface StubOptions {
   rate?: (key: string, window: string, limit: number) => Promise<boolean>;
   quota?: (userId: string, month: string, limit: number) => Promise<{ allowed: boolean; used: number }>;
   fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>;
+  revenueCatTimeoutMs?: number;
 }
 
 function makeDeps(options: StubOptions = {}) {
@@ -81,6 +82,7 @@ function makeDeps(options: StubOptions = {}) {
       calls.quota.push({ userId, month, limit });
       return options.quota ? options.quota(userId, month, limit) : Promise.resolve({ allowed: true, used: 1 });
     },
+    revenueCatTimeoutMs: options.revenueCatTimeoutMs,
   };
 
   return { deps, calls };
@@ -471,9 +473,13 @@ Deno.test('an unreachable RevenueCat falls open to free', async () => {
 
 Deno.test('a RevenueCat that never answers is abandoned, and the caller stays free', async () => {
   _resetEntitlementCache();
+  // 50 ms rather than the production five seconds, so the suite does not wait
+  // out a real timeout to prove the timeout exists.
+  const timeoutMs = 50;
   const { deps, calls } = makeDeps({
     env: { OPENAI_API_KEY: 'sk-test', TIDYNOTE_RC_API_KEY: 'rc-test' },
-    // Resolves only when the handler's own signal fires. Without a timeout on
+    revenueCatTimeoutMs: timeoutMs,
+    // Settles only when the handler's own signal fires. Without a timeout on
     // the fetch this test would hang forever, which is the point.
     fetchImpl: (_url, init) =>
       new Promise((_resolve, reject) => {
@@ -485,9 +491,9 @@ Deno.test('a RevenueCat that never answers is abandoned, and the caller stays fr
   assertEquals(await resolvePlan(deps, VALID_USER), 'free');
   const elapsed = Date.now() - startedAt;
   assert(calls.fetch[0].init?.signal instanceof AbortSignal);
-  // Bounded by the configured timeout, with slack for a slow runner.
-  assert(elapsed >= REVENUECAT_TIMEOUT_MS - 500, `gave up after ${elapsed}ms`);
-  assert(elapsed < REVENUECAT_TIMEOUT_MS * 3, `gave up after ${elapsed}ms`);
+  // The injected bound is what fired, not the production one.
+  assert(elapsed >= timeoutMs, `gave up after ${elapsed}ms`);
+  assert(elapsed < REVENUECAT_TIMEOUT_MS, `gave up after ${elapsed}ms`);
 });
 
 Deno.test('a resolved entitlement is cached, a failed one is not', async () => {
