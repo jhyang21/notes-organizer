@@ -11,7 +11,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Select Xcode
         run: |
@@ -77,9 +77,9 @@ jobs:
   edge-function:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: denoland/setup-deno@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
         with:
           deno-version: v2.x
-      - run: deno check supabase/functions/tidynote_organize/index.ts
-      - run: deno test --allow-net --allow-env supabase/functions/tidynote_organize/
+      - run: deno check --frozen supabase/functions/tidynote_organize/index.ts
+      - run: deno test --frozen --allow-net --allow-env supabase/functions/tidynote_organize/

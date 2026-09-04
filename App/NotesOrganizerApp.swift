@@ -1,5 +1,6 @@
 import NotesOrganizerKit
 import SwiftUI
+import WidgetKit
 
 @main
 struct NotesOrganizerApp: App {
@@ -61,8 +62,25 @@ struct NotesOrganizerApp: App {
                 // before the screen exists. Both leave the request in the same
                 // place, and the screen picks it up.
                 .onOpenURL { url in
-                    if let link = QuickCaptureLink.route(url) {
+                    if let link = QuickCaptureLink.route(url, acceptedTokens: QuickCaptureToken.accepted()) {
                         QuickCaptureRouter.shared.request(link)
+                    }
+                }
+                // Rotating here rather than in `init()` is the whole reason a
+                // cold-start widget tap still records: a launch URL is
+                // delivered while the scene connects, before this task runs,
+                // so it is checked against the token the widget actually used.
+                // The token the rotation retires stays valid for one more
+                // launch anyway, so nothing rests on that ordering.
+                //
+                // Then the widget and the control are asked to redraw. They
+                // build their URL from the token, so a tile still holding the
+                // old one is a tap that only opens the app.
+                .task {
+                    QuickCaptureToken.rotate()
+                    WidgetCenter.shared.reloadAllTimelines()
+                    if #available(iOS 18, *) {
+                        ControlCenter.shared.reloadAllControls()
                     }
                 }
         }

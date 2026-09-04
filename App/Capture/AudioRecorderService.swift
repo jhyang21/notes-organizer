@@ -119,6 +119,15 @@ final class AudioRecorderService: AudioRecording {
             throw RecorderError.startFailed(String(localized: "The microphone didn't start. Try again."))
         }
 
+        // The file exists once recording has started, so this is the first
+        // moment it can be protected. Not `.complete`: recording carries on
+        // while the phone is locked, and a file the app can no longer write to
+        // is a tidy that ends the moment the screen does.
+        try? FileManager.default.setAttributes(
+            [.protectionKey: FileProtectionType.completeUntilFirstUserAuthentication],
+            ofItemAtPath: url.path
+        )
+
         self.recorder = recorder
         lastMeteredDuration = 0
 

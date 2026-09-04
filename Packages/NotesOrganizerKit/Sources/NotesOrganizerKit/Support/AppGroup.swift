@@ -15,4 +15,12 @@ public enum AppGroup {
     public static var defaults: UserDefaults? {
         UserDefaults(suiteName: identifier)
     }
+
+    /// The group's shared directory, or `nil` on the same builds `defaults` is
+    /// `nil` on. Anything the user typed belongs in a file here rather than in
+    /// the suite above: a defaults plist is written without a data-protection
+    /// class, so it can be read off a locked phone.
+    public static var containerURL: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: identifier)
+    }
 }

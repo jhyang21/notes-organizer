@@ -10,9 +10,11 @@ import WidgetKit
 /// leave people talking at a Lock Screen.
 struct QuickTidyWidget: Widget {
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: "QuickTidyWidget", provider: QuickTidyProvider()) { _ in
+        StaticConfiguration(kind: "QuickTidyWidget", provider: QuickTidyProvider()) { entry in
             QuickTidyWidgetView()
-                .widgetURL(QuickCaptureLink.record.url)
+                // With no token the tap still opens the app, it just doesn't
+                // start recording. Better than a URL the app will refuse.
+                .widgetURL(entry.token.map(QuickCaptureLink.recordURL(token:)) ?? QuickCaptureLink.open.url)
         }
         .configurationDisplayName("Start a Tidy")
         .description("Opens TidyNote and starts recording.")
@@ -20,24 +22,28 @@ struct QuickTidyWidget: Widget {
     }
 }
 
-/// Nothing here changes on its own, so there is one entry and no reason to ask
-/// for another. The date is what `TimelineEntry` requires, not something the
-/// widget reads.
+/// The only thing that changes here is the token, which the app rotates at
+/// every launch and then asks for a reload. The date is what `TimelineEntry`
+/// requires, not something the widget reads.
 struct QuickTidyEntry: TimelineEntry {
     let date: Date
+    /// Read out of the App Group at render time. `nil` in a preview, or on a
+    /// build without the group entitlement.
+    let token: String?
 }
 
 struct QuickTidyProvider: TimelineProvider {
     func placeholder(in context: Context) -> QuickTidyEntry {
-        QuickTidyEntry(date: .now)
+        QuickTidyEntry(date: .now, token: nil)
     }
 
     func getSnapshot(in context: Context, completion: @escaping (QuickTidyEntry) -> Void) {
-        completion(QuickTidyEntry(date: .now))
+        completion(QuickTidyEntry(date: .now, token: QuickCaptureToken.current()))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<QuickTidyEntry>) -> Void) {
-        completion(Timeline(entries: [QuickTidyEntry(date: .now)], policy: .never))
+        let entry = QuickTidyEntry(date: .now, token: QuickCaptureToken.current())
+        completion(Timeline(entries: [entry], policy: .never))
     }
 }
 
