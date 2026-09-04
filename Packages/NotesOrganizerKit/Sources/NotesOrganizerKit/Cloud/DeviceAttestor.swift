@@ -67,6 +67,11 @@ public actor DeviceAttestor: DeviceAttesting {
     /// `supabase/functions/tidynote_organize/fixtures/README.md`.
     static let fixturePrefix = "TIDYNOTE_ATTEST_FIXTURE"
 
+    /// One per process. Two attestors reading the same Keychain item could
+    /// both find it empty and each register a key, spending two of the five
+    /// registrations an hour allows. Production wiring uses this one.
+    public static let shared = DeviceAttestor()
+
     private let config: CloudConfig
     private let transport: CloudOrganizer.Transport
     private let keychainAccount: String

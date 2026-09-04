@@ -18,12 +18,12 @@ public struct OrganizeRouting: Sendable {
     ///   Tests and previews pass a `MockOrganizer` instead. One object covers
     ///   text and voice, because one service does both.
     ///
-    /// The default organizer is the only one that attests. A `DeviceAttestor`
-    /// keys itself by bundle id, so the app and the share extension each build
-    /// one here and each end up with a key of its own.
+    /// The default organizer is the only one that attests. The shared
+    /// `DeviceAttestor` keys itself by bundle id, so the app and the share
+    /// extension each end up with a key of their own.
     public init(store: EntitlementStore = .shared, cloud: (NoteOrganizing & VoiceOrganizing)? = nil) {
         self.store = store
-        self.cloud = cloud ?? CloudOrganizer(store: store, attestor: DeviceAttestor())
+        self.cloud = cloud ?? CloudOrganizer(store: store, attestor: DeviceAttestor.shared)
     }
 
     // MARK: - Deciding
