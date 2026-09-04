@@ -42,6 +42,10 @@ public enum OrganizeFailure: Error, Equatable, Sendable {
     /// The recording is longer than the service will take.
     case audioTooLarge
 
+    /// This build can no longer prove it is TidyNote, so the service won't
+    /// tidy for it. The only way past is a newer build from the App Store.
+    case updateRequired
+
     /// The service answered with something other than a note. `reason` is
     /// user-facing copy, so it names no vendor and no status code.
     case cloudUnavailable(reason: String)

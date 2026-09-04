@@ -35,17 +35,24 @@ public struct CloudOrganizer: NoteOrganizing, VoiceOrganizing {
     private let store: EntitlementStore
     private let clientVersion: String
     private let transport: Transport
+    private let attestor: any DeviceAttesting
 
+    /// - Parameter attestor: signs each request body so the server can tell a
+    ///   real install from anyone who copied the app user id out of one.
+    ///   Defaults to no attestation, which is what every test wants and what
+    ///   the server treats as an old build.
     public init(
         config: CloudConfig = .production,
         store: EntitlementStore = .shared,
         clientVersion: String = CloudOrganizer.bundleVersion(),
-        transport: @escaping Transport = CloudOrganizer.urlSessionTransport()
+        transport: @escaping Transport = CloudOrganizer.urlSessionTransport(),
+        attestor: any DeviceAttesting = NoopAttestor()
     ) {
         self.config = config
         self.store = store
         self.clientVersion = clientVersion
         self.transport = transport
+        self.attestor = attestor
     }
 
     public func organize(_ text: String) async throws -> OrganizedNote {
@@ -55,7 +62,7 @@ public struct CloudOrganizer: NoteOrganizing, VoiceOrganizing {
         }
 
         let (data, response) = try await send(transcript)
-        return try note(from: data, response: response)
+        return try await note(from: data, response: response)
     }
 
     /// The same tidy from a recording instead of typed text: the server
@@ -72,58 +79,74 @@ public struct CloudOrganizer: NoteOrganizing, VoiceOrganizing {
         }
 
         let (data, response) = try await sendAudio(audio, durationSeconds: durationSeconds, locale: locale)
-        return try note(from: data, response: response)
+        return try await note(from: data, response: response)
     }
 
     // MARK: - Request
 
     private func send(_ transcript: String) async throws -> (Data, URLResponse) {
-        var request = makeRequest(timeout: Self.timeout)
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
+        let appUserID = store.appUserID()
         let body = RequestBody(
             text: transcript,
-            appUserId: store.appUserID(),
+            appUserId: appUserID,
             clientVersion: clientVersion
         )
         guard let encoded = try? JSONEncoder().encode(body) else {
             throw OrganizeFailure.cloudUnavailable(reason: Copy.unreadable)
         }
+
+        var request = Self.makeRequest(config: config, timeout: Self.timeout)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = encoded
 
-        return try await perform(request)
+        return try await perform(attested(request, body: encoded, appUserID: appUserID))
     }
 
     private func sendAudio(_ audio: Data, durationSeconds: Double, locale: Locale) async throws -> (Data, URLResponse) {
-        var body = MultipartFormBody()
-        body.appendFile(name: "audio", filename: "capture.m4a", contentType: "audio/mp4", data: audio)
-        body.appendField(name: "appUserId", value: store.appUserID())
-        body.appendField(name: "clientVersion", value: clientVersion)
-        body.appendField(name: "durationSeconds", value: Self.wholeSeconds(durationSeconds))
+        let appUserID = store.appUserID()
+        var form = MultipartFormBody()
+        form.appendFile(name: "audio", filename: "capture.m4a", contentType: "audio/mp4", data: audio)
+        form.appendField(name: "appUserId", value: appUserID)
+        form.appendField(name: "clientVersion", value: clientVersion)
+        form.appendField(name: "durationSeconds", value: Self.wholeSeconds(durationSeconds))
         // BCP-47 because that is what a transcription service reads. Left out
         // entirely when there is nothing to say, so the server picks rather
         // than being handed an empty string to interpret.
         let languageTag = locale.identifier(.bcp47)
         if !languageTag.isEmpty {
-            body.appendField(name: "locale", value: languageTag)
+            form.appendField(name: "locale", value: languageTag)
         }
+        let encoded = form.encoded()
 
-        var request = makeRequest(timeout: Self.audioTimeout)
-        request.setValue(body.contentTypeHeader, forHTTPHeaderField: "Content-Type")
-        request.httpBody = body.encoded()
+        var request = Self.makeRequest(config: config, timeout: Self.audioTimeout)
+        request.setValue(form.contentTypeHeader, forHTTPHeaderField: "Content-Type")
+        request.httpBody = encoded
 
-        return try await perform(request)
+        return try await perform(attested(request, body: encoded, appUserID: appUserID))
     }
 
     /// Everything the two paths agree on: where the call goes, how it
     /// authenticates, and how long it may take. Only the body and its
-    /// `Content-Type` differ.
-    private func makeRequest(timeout: TimeInterval) -> URLRequest {
+    /// `Content-Type` differ. Static because `DeviceAttestor` registers a key
+    /// through the same door, and the two auth headers are worth writing once.
+    static func makeRequest(config: CloudConfig, timeout: TimeInterval) -> URLRequest {
         var request = URLRequest(url: config.functionsURL.appending(path: Self.functionName))
         request.httpMethod = "POST"
         request.timeoutInterval = timeout
         request.setValue("Bearer \(config.anonKey)", forHTTPHeaderField: "Authorization")
         request.setValue(config.anonKey, forHTTPHeaderField: "apikey")
+        return request
+    }
+
+    /// The same request with this install's proof of identity on it, where
+    /// there is one. The signature covers `body`, so the bytes handed here
+    /// have to be the bytes already set on the request: re-encoding afterwards
+    /// would leave a header signing something that never went out.
+    private func attested(_ request: URLRequest, body: Data, appUserID: String) async -> URLRequest {
+        var request = request
+        for (name, value) in await attestor.assertionHeaders(for: body, appUserID: appUserID) {
+            request.setValue(value, forHTTPHeaderField: name)
+        }
         return request
     }
 
@@ -163,7 +186,7 @@ public struct CloudOrganizer: NoteOrganizing, VoiceOrganizing {
     /// The one place a reply becomes either a note or a failure. Both paths
     /// call the same function and get the same envelope back, so both read it
     /// the same way.
-    private func note(from data: Data, response: URLResponse) throws -> OrganizedNote {
+    private func note(from data: Data, response: URLResponse) async throws -> OrganizedNote {
         guard let http = response as? HTTPURLResponse else {
             throw OrganizeFailure.cloudUnavailable(reason: Copy.unreadable)
         }
@@ -171,6 +194,21 @@ public struct CloudOrganizer: NoteOrganizing, VoiceOrganizing {
         switch http.statusCode {
         case 200:
             return try decodeNote(from: data)
+        case 401:
+            // The server doesn't know the key this call signed with — most
+            // likely the row went with a restore or a reset. Throw the key
+            // away so the next call registers a new one, and let the user see
+            // the same "try again" a bad minute gets: retrying is exactly what
+            // fixes it.
+            if errorCode(in: data) == "attestation_invalid" {
+                await attestor.invalidate()
+            }
+            throw OrganizeFailure.cloudUnavailable(reason: Copy.serverProblem)
+        case 426:
+            // Enforcement is on and this build can't attest. Nothing here can
+            // fix that, so it gets its own dead end instead of a retry button
+            // that would never come back different.
+            throw OrganizeFailure.updateRequired
         case 429:
             throw quotaOrRateLimitFailure(from: data)
         case 413:
@@ -204,6 +242,12 @@ public struct CloudOrganizer: NoteOrganizing, VoiceOrganizing {
     /// A 429 is either "you're out for the month" — a wall with an upsell —
     /// or "too fast", which is a wait. They read nothing alike to the user, so
     /// the code decides, not the status.
+    /// The `code` out of an error envelope, for the statuses the server uses
+    /// for more than one thing. `nil` when the body isn't one.
+    private func errorCode(in data: Data) -> String? {
+        (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error.code
+    }
+
     private func quotaOrRateLimitFailure(from data: Data) -> OrganizeFailure {
         guard let envelope = try? JSONDecoder().decode(ErrorBody.self, from: data) else {
             return .cloudUnavailable(reason: Copy.serverProblem)

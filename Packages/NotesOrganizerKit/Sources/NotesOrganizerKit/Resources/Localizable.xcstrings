@@ -61,10 +61,16 @@
     "They come back next month, or go unlimited with TidyNote Pro." : {
 
     },
+    "This version is no longer supported. Update TidyNote to keep tidying." : {
+
+    },
     "TidyNote isn't set up yet" : {
 
     },
     "TidyNote needs a connection to tidy a note. Nothing was lost — try again when you're back online." : {
+
+    },
+    "TidyNote needs an update" : {
 
     },
     "TidyNote says what it sends and asks once, in the app, before anything leaves your iPhone." : {
