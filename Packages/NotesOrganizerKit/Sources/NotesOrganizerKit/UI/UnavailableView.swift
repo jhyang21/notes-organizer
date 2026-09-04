@@ -1,14 +1,16 @@
 import SwiftUI
 
 /// What the user sees when there is no note to show: nothing worth
-/// organizing, a spent month, no connection, a recording too long to send, or
-/// a service having a bad minute. A `NoticeView` plus the copy and the way
-/// forward for each `OrganizeFailure`.
+/// organizing, a spent month, no connection, a recording too long to send, a
+/// build the service no longer accepts, or a service having a bad minute. A
+/// `NoticeView` plus the copy and the way forward for each `OrganizeFailure`.
 ///
 /// Every case offers a way forward, and the way forward is specific — "Record
 /// Again" when we heard nothing, "See TidyNote Pro" when the month is spent.
 /// A bare "Try Again" where trying again can't work would only waste the
-/// user's time.
+/// user's time. `updateRequired` is the one case with no button at all: the
+/// App Store is the only way past it, and neither the app nor the extension
+/// can put the user there.
 ///
 /// Each action is a closure the caller may not have: a screen with no paywall
 /// to open passes `nil` and the button doesn't appear. No copy here names a
@@ -79,6 +81,12 @@ public struct UnavailableView: View {
         case .audioTooLarge:
             retryButton(title: String(localized: "Record Again", bundle: .module))
 
+        case .updateRequired:
+            // Nothing to offer. An app can't open its own App Store page
+            // without hard-coding a store id it doesn't otherwise need, and a
+            // retry would come back the same every time.
+            EmptyView()
+
         case .cloudQuotaExhausted:
             if inShareExtension {
                 openApp(
@@ -142,6 +150,7 @@ public struct UnavailableView: View {
         case .cloudConsentNeeded: "hand.raised"
         case .networkUnavailable: "wifi.slash"
         case .audioTooLarge: "waveform"
+        case .updateRequired: "arrow.down.app"
         case .cloudUnavailable: "cloud.slash"
         }
     }
@@ -158,6 +167,7 @@ public struct UnavailableView: View {
         case .cloudConsentNeeded: String(localized: "TidyNote isn't set up yet", bundle: .module)
         case .networkUnavailable: String(localized: "You're offline", bundle: .module)
         case .audioTooLarge: String(localized: "That recording is too long", bundle: .module)
+        case .updateRequired: String(localized: "TidyNote needs an update", bundle: .module)
         case .cloudUnavailable: String(localized: "The tidy service hit a snag", bundle: .module)
         }
     }
@@ -178,6 +188,8 @@ public struct UnavailableView: View {
             String(localized: "TidyNote needs a connection to tidy a note. Nothing was lost — try again when you're back online.", bundle: .module)
         case .audioTooLarge:
             String(localized: "That recording is longer than TidyNote can handle. Try recording it in two parts.", bundle: .module)
+        case .updateRequired:
+            String(localized: "This version is no longer supported. Update TidyNote to keep tidying.", bundle: .module)
         case .cloudUnavailable(let reason):
             reason
         }
@@ -202,6 +214,10 @@ public struct UnavailableView: View {
 
 #Preview("Recording too long") {
     UnavailableView(failure: .audioTooLarge, onRetry: {})
+}
+
+#Preview("Update required") {
+    UnavailableView(failure: .updateRequired, onRetry: {})
 }
 
 #Preview("Quota exhausted, share extension") {
