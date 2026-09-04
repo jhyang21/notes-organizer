@@ -12,14 +12,17 @@ import WidgetKit
 /// pretending otherwise and opening the app anyway.
 @available(iOS 18.0, *)
 struct TidyControl: ControlWidget {
+    /// Read at render time so every redraw picks up the token the last launch
+    /// minted. Without one the control still opens the app, it just doesn't
+    /// start recording.
+    private var recordURL: URL {
+        QuickCaptureToken.current().map(QuickCaptureLink.recordURL(token:))
+            ?? QuickCaptureLink.open.url
+    }
+
     var body: some ControlWidgetConfiguration {
         StaticControlConfiguration(kind: "com.immform.notesorganizer.widgets.tidy") {
-            // Read inside the closure so every render picks up the token the
-            // last launch minted. Without one the control still opens the app,
-            // it just doesn't start recording.
-            let url = QuickCaptureToken.current().map(QuickCaptureLink.recordURL(token:))
-                ?? QuickCaptureLink.open.url
-            ControlWidgetButton(action: OpenURLIntent(url)) {
+            ControlWidgetButton(action: OpenURLIntent(recordURL)) {
                 Label("Start a Tidy", systemImage: "mic.fill")
             }
         }
