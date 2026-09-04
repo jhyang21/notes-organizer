@@ -239,15 +239,15 @@ public struct CloudOrganizer: NoteOrganizing, VoiceOrganizing {
         return OutputSanitizer.sanitize(success.note)
     }
 
-    /// A 429 is either "you're out for the month" — a wall with an upsell —
-    /// or "too fast", which is a wait. They read nothing alike to the user, so
-    /// the code decides, not the status.
     /// The `code` out of an error envelope, for the statuses the server uses
     /// for more than one thing. `nil` when the body isn't one.
     private func errorCode(in data: Data) -> String? {
         (try? JSONDecoder().decode(ErrorBody.self, from: data))?.error.code
     }
 
+    /// A 429 is either "you're out for the month" — a wall with an upsell —
+    /// or "too fast", which is a wait. They read nothing alike to the user, so
+    /// the code decides, not the status.
     private func quotaOrRateLimitFailure(from data: Data) -> OrganizeFailure {
         guard let envelope = try? JSONDecoder().decode(ErrorBody.self, from: data) else {
             return .cloudUnavailable(reason: Copy.serverProblem)

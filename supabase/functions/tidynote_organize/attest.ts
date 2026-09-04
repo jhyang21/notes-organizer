@@ -134,13 +134,10 @@ function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
  * it can be a view into a larger pooled buffer -- copying is the only way to
  * be sure the bytes stand alone. */
 function asBytes(value: unknown): Bytes {
-  if (value instanceof Uint8Array) {
-    const copy = new Uint8Array(value.byteLength);
-    copy.set(value);
-    return copy;
-  }
-  if (value instanceof ArrayBuffer) return new Uint8Array(value);
-  throw new AttestError('malformed_attestation');
+  if (!(value instanceof Uint8Array)) throw new AttestError('malformed_attestation');
+  const copy = new Uint8Array(value.byteLength);
+  copy.set(value);
+  return copy;
 }
 
 // ---------------------------------------------------------------------------
@@ -170,7 +167,10 @@ function readDer(bytes: Uint8Array, offset: number): DerValue {
     if (lengthBytes === 0 || lengthBytes > 4) throw new AttestError('malformed_der');
     if (contentStart + lengthBytes > bytes.length) throw new AttestError('malformed_der');
     contentLength = 0;
-    for (let i = 0; i < lengthBytes; i++) contentLength = (contentLength << 8) | bytes[contentStart + i];
+    // Multiplied rather than shifted: `<<` works on 32-bit signed values, so
+    // four length bytes with the top bit set would wrap to a negative length
+    // and slip past the bounds check below.
+    for (let i = 0; i < lengthBytes; i++) contentLength = contentLength * 256 + bytes[contentStart + i];
     contentStart += lengthBytes;
   }
 
@@ -460,5 +460,12 @@ export async function verifyAssertion(input: AssertionInput): Promise<{ counter:
   if (!valid) throw new AttestError('bad_signature');
 
   if (parsed.counter <= previousCounter) throw new AttestError('counter_replayed');
+
+  // Apple's step 6 asks that the challenge inside the client data match the
+  // one the server issued. Here the client data is the request body itself and
+  // `clientDataHash` is the hash of the bytes that arrived, so the two are the
+  // same thing and there is nothing left to compare. Steps 7 and 8 are the
+  // validation-category and bundle-version extensions, skipped for the reason
+  // given in `verifyAttestation`.
   return { counter: parsed.counter };
 }
