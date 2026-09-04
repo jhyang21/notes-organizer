@@ -11,9 +11,12 @@ import Foundation
 /// The slot is a file in the App Group container rather than a defaults key.
 /// The note is the user's own words, and a defaults plist is written with no
 /// data-protection class at all — readable off a locked phone by anything that
-/// can reach the disk. The file is written `.completeFileProtection` and kept
-/// out of backups, so a spent tidy waiting to be sent is unreadable while the
-/// phone is locked and never leaves the device in an iCloud backup.
+/// can reach the disk. The file is written `.completeFileProtectionUnlessOpen`
+/// and kept out of backups, so a spent tidy waiting to be sent is unreadable
+/// while the phone is locked and never leaves the device in an iCloud backup.
+/// "Unless open" rather than "complete" because the note can arrive while the
+/// phone is locked, and a class that refuses the write there would drop the
+/// one copy this slot exists to keep.
 ///
 /// The app owns the slot alone. The share extension never writes here, so an
 /// extension tidy can't overwrite the note the user left on screen in the app.
@@ -69,7 +72,7 @@ public struct DraftStore: @unchecked Sendable {
         let manager = FileManager.default
         try? manager.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         do {
-            try data.write(to: url, options: [.atomic, .completeFileProtection])
+            try data.write(to: url, options: [.atomic, .completeFileProtectionUnlessOpen])
         } catch {
             return
         }
