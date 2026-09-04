@@ -39,6 +39,11 @@ $$;
 -- of their own on a function created here, only the one PUBLIC carries.
 revoke all on function public.tidynote_prune_rate_limits() from public;
 
+-- The IP half of the key is an HMAC now, not a bare digest; keep the table
+-- comment honest.
+comment on table public.tidynote_rate_limits is
+  'TidyNote per-minute request counters keyed by "u:<appUserId>" or "ip:<hmac-sha256>". Rows are disposable; window_start is a UTC minute stamp, pruned after one hour.';
+
 comment on function public.tidynote_prune_rate_limits() is
   'Deletes TidyNote rate-limit windows older than one hour. Scheduled by pg_cron every 15 minutes.';
 
