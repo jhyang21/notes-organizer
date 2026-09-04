@@ -33,6 +33,9 @@ final class ShareViewModel {
     private let log: DiagnosticsLog
     private let routing: OrganizeRouting
 
+    /// The default routing attests from inside an appex, which Apple neither
+    /// documents nor forbids; if it turns out not to work here, the extension
+    /// still has `openApp(_:)` to hand the tidy to the app.
     init(routing: OrganizeRouting = OrganizeRouting(), log: DiagnosticsLog = .shared) {
         self.log = log
         self.routing = routing

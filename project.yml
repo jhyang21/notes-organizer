@@ -9,7 +9,7 @@ settings:
     DEVELOPMENT_TEAM: SUFCW5V2QV
     SWIFT_VERSION: "6.0"
     CODE_SIGN_STYLE: Manual
-    MARKETING_VERSION: 1.0.1
+    MARKETING_VERSION: 1.0.2
     CURRENT_PROJECT_VERSION: 1
     IPHONEOS_DEPLOYMENT_TARGET: "17.0"
     TARGETED_DEVICE_FAMILY: "1"
@@ -54,6 +54,10 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.immform.notesorganizer
         PRODUCT_NAME: NotesOrganizer
+        # Claims App Attest as well as the app group. Both this bundle ID and
+        # the share extension's need the App Attest capability enabled in the
+        # developer portal, or the next `beta` run fails when match asks for a
+        # profile that can carry the entitlement.
         CODE_SIGN_ENTITLEMENTS: App/App.entitlements
         # Manual signing needs the profile pinned at archive time; gym's
         # export mapping alone is too late. Ignored when
