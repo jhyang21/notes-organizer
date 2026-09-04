@@ -102,9 +102,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.immform.notesorganizer.widgets
         PRODUCT_NAME: WidgetsExtension
-        # No shared storage is read yet. The entitlement is here so the App ID
-        # carries the capability from the first build that ships — adding it
-        # later means a new profile and a rejected upload in between.
+        # The widget and the control read the quick-capture token out of the
+        # App Group, so this entitlement is what lets their tap start a
+        # recording instead of only opening the app.
         CODE_SIGN_ENTITLEMENTS: Widgets/Widgets.entitlements
         CODE_SIGN_IDENTITY: "Apple Distribution"
         PROVISIONING_PROFILE_SPECIFIER: match AppStore com.immform.notesorganizer.widgets
