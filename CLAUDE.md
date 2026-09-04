@@ -56,6 +56,12 @@ from: note kinds, transformation levels, rules, the redundancy budget.
   and reading every output against its watch line.
 - Tests: `deno test --allow-net --allow-env supabase/functions/tidynote_organize/`
   (dependency-injected, no network). CI runs them on Ubuntu.
+- Secrets the function reads (`npx supabase secrets set NAME=value --project-ref qcooviiralmdnfvbrtae`):
+  `OPENAI_API_KEY`, `TIDYNOTE_RC_API_KEY` (RevenueCat, unset means every
+  caller is free), `TIDYNOTE_IP_HASH_KEY` (random 32+ bytes; keys the
+  per-IP rate limit, unset means that limit is off and the log says
+  `ip_limit_unconfigured` once per isolate). Optional model overrides:
+  `TIDYNOTE_OPENAI_MODEL`, `TIDYNOTE_WHISPER_MODEL`.
 - Deploy: `npx supabase functions deploy tidynote_organize --project-ref qcooviiralmdnfvbrtae`
   from the repo root. Deploy only this function; the project is shared with
   Relora. Send one warm-up request after a schema change: the strict-schema

@@ -33,24 +33,30 @@ const FREE_MONTHLY_LIMIT = 5;
 // Pro is unlimited in product terms and stays marketed that way. The counter is
 // an anti-abuse backstop, not a product limit: 500 a month is about 16 a day,
 // which no person reaches by using the app but a script does in an afternoon.
+// It is enforced: past the ceiling a pro caller gets the same 429 a free one
+// gets.
 const PRO_MONTHLY_LIMIT = 500;
+
+// Declared-size ceilings, checked before the body is read at all. The
+// post-parse checks below are the real ones; these only stop a large upload
+// from being buffered before anyone looks at it. The multipart figure is the
+// 12 MB audio ceiling plus room for the framing and the small text fields.
+const MAX_MULTIPART_BYTES = 13 * 1024 * 1024;
+const MAX_JSON_BYTES = 256 * 1024;
 
 const USER_REQUESTS_PER_MINUTE = 6;
 const IP_REQUESTS_PER_MINUTE = 20;
 
 const ENTITLEMENT_CACHE_TTL_MS = 5 * 60 * 1000;
+/** How long the entitlement lookup waits before it gives up. Exported so the
+ * test for the timeout does not have to repeat the number. */
+export const REVENUECAT_TIMEOUT_MS = 5_000;
 const DEFAULT_MODEL = 'gpt-5-mini';
 const WHISPER_TIMEOUT_MS = 45_000;
 const DEFAULT_WHISPER_MODEL = 'whisper-1';
 // Whisper imitates the style of its prompt, so this asks for the punctuation
 // and casing it otherwise omits. It is a style sample, not an instruction.
 const WHISPER_PROMPT = 'A personal voice note. Use normal punctuation and sentence casing.';
-
-const CORS_HEADERS: Record<string, string> = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
-};
 
 // ---------------------------------------------------------------------------
 // Wire types
@@ -73,6 +79,9 @@ export interface Deps {
   now(): Date;
   consumeRate(key: string, window: string, limit: number): Promise<boolean>;
   consumeQuota(userId: string, month: string, limit: number): Promise<{ allowed: boolean; used: number }>;
+  /** Overrides REVENUECAT_TIMEOUT_MS. Only the timeout test sets it, so its
+   * hang does not cost the suite five real seconds. Production leaves it out. */
+  revenueCatTimeoutMs?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,7 +91,10 @@ export interface Deps {
 function jsonResponse(payload: unknown, status: number): Response {
   return new Response(JSON.stringify(payload), {
     status,
-    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
+    // No CORS headers, anywhere. The only client is the iOS app, which sends
+    // no Origin and does not need them. Leaving them off means a browser page
+    // holding the extractable anon key cannot call this function at all.
+    headers: { 'Content-Type': 'application/json' },
   });
 }
 
@@ -110,12 +122,76 @@ export async function sha256Hex(input: string): Promise<string> {
 }
 
 /** First hop of X-Forwarded-For. Later hops are appended by our own proxies, so
- * only the first entry identifies the caller. */
+ * only the first entry identifies the caller.
+ *
+ * The header cannot be forged from outside: the platform replaces whatever the
+ * caller sent with the real client address before this function sees it.
+ * Verified live on 2026-09-03 by firing 45 parallel requests with fresh app
+ * user ids and 45 different forged X-Forwarded-For values, which returned 20
+ * successes and 25 rate-limited replies. Had the forgery worked, all 45 would
+ * have landed in separate buckets and all 45 would have succeeded. */
 export function clientIp(req: Request): string | null {
   const header = req.headers.get('x-forwarded-for');
   if (!header) return null;
   const first = header.split(',')[0]?.trim();
   return first ? first : null;
+}
+
+/** True once the missing-secret line has been logged in this isolate. The line
+ * is worth seeing, but not once per request. */
+let ipHashKeyWarned = false;
+
+/** Exposed so tests start from a clean flag. */
+export function _resetIpHashKeyWarning(): void {
+  ipHashKeyWarned = false;
+}
+
+/**
+ * The rate-limit bucket name for a caller's IP, keyed with a secret.
+ *
+ * A plain SHA-256 of an IPv4 address anonymizes nothing: the whole space is
+ * 2^32 and a laptop enumerates it, so anyone who reads the rate-limit table
+ * reads the addresses. The HMAC makes the bucket name useless without
+ * TIDYNOTE_IP_HASH_KEY, a Supabase function secret set to any long random
+ * string. Rotating it only resets the minute windows in flight.
+ *
+ * Returns null when the secret is missing. Falling back to a fixed key would
+ * drop every caller in the world into one bucket of 20 a minute, so the IP
+ * limit is skipped for that request instead. The per-user limit and the monthly
+ * quota still apply.
+ */
+async function ipRateKey(deps: Deps, ip: string): Promise<string | null> {
+  const secret = deps.env('TIDYNOTE_IP_HASH_KEY');
+  if (!secret) {
+    if (!ipHashKeyWarned) {
+      ipHashKeyWarned = true;
+      console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'ip_limit_unconfigured' }));
+    }
+    return null;
+  }
+
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(ip));
+  const hex = Array.from(new Uint8Array(signature))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+  return `ip:${hex}`;
+}
+
+/** The size the caller says the body is. Null when the header is absent or is
+ * not a number, which leaves the decision to the checks that read the body. */
+function declaredBodyBytes(req: Request): number | null {
+  const raw = req.headers.get('content-length');
+  if (raw === null) return null;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function quotaState(used: number, limit: number, month: string): QuotaState {
@@ -167,7 +243,12 @@ export async function resolvePlan(deps: Deps, appUserId: string): Promise<Plan> 
   try {
     const response = await deps.fetch(
       `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`,
-      { headers: { Authorization: `Bearer ${apiKey}` } },
+      // Without a bound, a RevenueCat that accepts the connection and then
+      // stalls holds this request open until the platform kills it.
+      {
+        headers: { Authorization: `Bearer ${apiKey}` },
+        signal: AbortSignal.timeout(deps.revenueCatTimeoutMs ?? REVENUECAT_TIMEOUT_MS),
+      },
     );
     // A transient RevenueCat error is not evidence about this user, so it is
     // never cached -- the next request asks again.
@@ -249,7 +330,7 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   try {
     if (req.method === 'OPTIONS') {
       status = 204;
-      return new Response(null, { status: 204, headers: CORS_HEADERS });
+      return new Response(null, { status: 204 });
     }
     if (req.method !== 'POST') {
       status = 405;
@@ -270,6 +351,12 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     let durationSeconds = 0;
 
     if (mode === 'voice') {
+      const declared = declaredBodyBytes(req);
+      if (declared !== null && declared > MAX_MULTIPART_BYTES) {
+        status = 413;
+        code = 'audio_too_large';
+        return errorResponse(code, `upload exceeds ${MAX_MULTIPART_BYTES} bytes.`, status);
+      }
       let form: FormData;
       try {
         form = await req.formData();
@@ -286,6 +373,12 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
       const part = form.get('audio');
       audio = part instanceof File ? part : null;
     } else {
+      const declared = declaredBodyBytes(req);
+      if (declared !== null && declared > MAX_JSON_BYTES) {
+        status = 413;
+        code = 'too_long';
+        return errorResponse(code, `body exceeds ${MAX_JSON_BYTES} bytes.`, status);
+      }
       let payload: { text?: unknown; appUserId?: unknown; clientVersion?: unknown };
       try {
         payload = await req.json();
@@ -351,8 +444,8 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
 
     const ip = clientIp(req);
     if (ip) {
-      const ipKey = `ip:${await sha256Hex(ip)}`;
-      if (!(await withinRate(deps, ipKey, window, IP_REQUESTS_PER_MINUTE))) {
+      const ipKey = await ipRateKey(deps, ip);
+      if (ipKey && !(await withinRate(deps, ipKey, window, IP_REQUESTS_PER_MINUTE))) {
         status = 429;
         code = 'rate_limited';
         return errorResponse(code, 'Too many requests. Try again in a moment.', status);
@@ -364,37 +457,35 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     const month = monthKey(now);
     const limit = plan === 'pro' ? PRO_MONTHLY_LIMIT : FREE_MONTHLY_LIMIT;
 
-    let used: number;
-    if (plan === 'pro') {
-      // Counted for fair-use visibility only. A counter failure must never
-      // stand between a paying user and their note.
-      try {
-        used = (await deps.consumeQuota(appUserId, month, limit)).used;
-      } catch (error) {
+    // A definite "no" from a working counter is honoured on either plan: past
+    // the ceiling the traffic is a script on a stolen key, not a customer.
+    //
+    // A counter that throws is a different thing -- an outage -- and there the
+    // two plans part. For pro it must never stand between a paying user and
+    // their note. For free, failing open would uncap the one spend the quota
+    // exists to cap, so it fails closed and the client offers a retry.
+    let result: { allowed: boolean; used: number };
+    try {
+      result = await deps.consumeQuota(appUserId, month, limit);
+    } catch (error) {
+      if (plan === 'pro') {
         console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'pro_quota_count_failed', message: String(error) }));
-        used = 0;
-      }
-    } else {
-      let result: { allowed: boolean; used: number };
-      try {
-        result = await deps.consumeQuota(appUserId, month, limit);
-      } catch (error) {
-        // Failing open here would uncap free spend, which is the one thing the
-        // quota exists to prevent. Fail closed and let the client offer a retry.
+        result = { allowed: true, used: 0 };
+      } else {
         console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'quota_unavailable', message: String(error) }));
         status = 503;
         code = 'quota_unavailable';
         return errorResponse(code, 'Usage service is unavailable. Try again shortly.', status);
       }
-      if (!result.allowed) {
-        status = 429;
-        code = 'quota_exhausted';
-        return errorResponse(code, 'Monthly premium tidies used', status, {
-          quota: quotaState(result.used, limit, month),
-        });
-      }
-      used = result.used;
     }
+    if (!result.allowed) {
+      status = 429;
+      code = 'quota_exhausted';
+      return errorResponse(code, 'Monthly premium tidies used', status, {
+        quota: quotaState(result.used, limit, month),
+      });
+    }
+    const used = result.used;
 
     // --- transcribe -------------------------------------------------------
     const openAiKey = deps.env('OPENAI_API_KEY');

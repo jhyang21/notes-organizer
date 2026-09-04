@@ -7,16 +7,19 @@ import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/st
 import {
   type Deps,
   _resetEntitlementCache,
+  _resetIpHashKeyWarning,
   clientIp,
   handleRequest,
   minuteKey,
   monthKey,
+  REVENUECAT_TIMEOUT_MS,
   resolvePlan,
   sha256Hex,
 } from './index.ts';
 import type { OrganizedNote } from './organize.ts';
 
 const VALID_USER = 'tidy:11111111-2222-3333-4444-555555555555';
+const IP_HASH_KEY = 'test-ip-hash-secret';
 const FIXED_NOW = new Date('2026-08-07T14:03:22.000Z');
 
 const SAMPLE_NOTE: OrganizedNote = {
@@ -53,6 +56,7 @@ interface StubOptions {
   rate?: (key: string, window: string, limit: number) => Promise<boolean>;
   quota?: (userId: string, month: string, limit: number) => Promise<{ allowed: boolean; used: number }>;
   fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>;
+  revenueCatTimeoutMs?: number;
 }
 
 function makeDeps(options: StubOptions = {}) {
@@ -68,7 +72,7 @@ function makeDeps(options: StubOptions = {}) {
       calls.fetch.push({ url, init });
       return options.fetchImpl ? options.fetchImpl(url, init) : Promise.resolve(openAiSuccess());
     }) as typeof fetch,
-    env: (key: string) => (options.env ?? { OPENAI_API_KEY: 'sk-test' })[key],
+    env: (key: string) => (options.env ?? { OPENAI_API_KEY: 'sk-test', TIDYNOTE_IP_HASH_KEY: IP_HASH_KEY })[key],
     now: () => options.now ?? FIXED_NOW,
     consumeRate: (key, window, limit) => {
       calls.rate.push({ key, window, limit });
@@ -78,6 +82,7 @@ function makeDeps(options: StubOptions = {}) {
       calls.quota.push({ userId, month, limit });
       return options.quota ? options.quota(userId, month, limit) : Promise.resolve({ allowed: true, used: 1 });
     },
+    revenueCatTimeoutMs: options.revenueCatTimeoutMs,
   };
 
   return { deps, calls };
@@ -159,11 +164,18 @@ Deno.test('sha256Hex is stable hex', async () => {
 // Validation
 // ---------------------------------------------------------------------------
 
-Deno.test('OPTIONS is a CORS preflight', async () => {
+Deno.test('OPTIONS is answered bare, with no CORS grant', async () => {
   const { deps } = makeDeps();
   const response = await handleRequest(new Request('https://example.test', { method: 'OPTIONS' }), deps);
   assertEquals(response.status, 204);
-  assertEquals(response.headers.get('Access-Control-Allow-Origin'), '*');
+  assertEquals(response.headers.get('access-control-allow-origin'), null);
+});
+
+Deno.test('no response carries a CORS header, so no browser page can call this', async () => {
+  const { deps } = makeDeps();
+  const response = await handleRequest(makeRequest({ text: 'hello there', appUserId: VALID_USER }), deps);
+  assertEquals(response.status, 200);
+  assertEquals(response.headers.get('access-control-allow-origin'), null);
 });
 
 Deno.test('GET is rejected', async () => {
@@ -210,6 +222,39 @@ Deno.test('text over 60000 characters is too long', async () => {
   assertEquals(calls.quota.length, 0);
 });
 
+Deno.test('a JSON body that declares more than 256 KB is refused before it is read', async () => {
+  const { deps, calls } = makeDeps();
+  const response = await handleRequest(
+    makeRequest({ text: 'hello there', appUserId: VALID_USER }, { 'content-length': String(256 * 1024 + 1) }),
+    deps,
+  );
+  assertEquals(response.status, 413);
+  assertEquals((await response.json()).error.code, 'too_long');
+  assertEquals(calls.quota.length, 0);
+  assertEquals(calls.fetch.length, 0);
+});
+
+Deno.test('a multipart body that declares more than 13 MB is refused before it is read', async () => {
+  const { deps, calls } = makeVoiceDeps();
+  const request = new Request('https://example.test/functions/v1/tidynote_organize', {
+    method: 'POST',
+    headers: { 'Content-Type': 'multipart/form-data; boundary=x', 'content-length': String(13 * 1024 * 1024 + 1) },
+    body: 'ignored, the header decides',
+  });
+  const response = await handleRequest(request, deps);
+  assertEquals(response.status, 413);
+  assertEquals((await response.json()).error.code, 'audio_too_large');
+  assertEquals(calls.quota.length, 0);
+  assertEquals(calls.fetch.length, 0);
+});
+
+Deno.test('a body with no content-length is judged on what it actually contains', async () => {
+  const { deps } = makeDeps();
+  const request = makeRequest({ text: 'hello there', appUserId: VALID_USER });
+  assertEquals(request.headers.get('content-length'), null);
+  assertEquals((await handleRequest(request, deps)).status, 200);
+});
+
 Deno.test('text at exactly 60000 characters is accepted', async () => {
   const { deps } = makeDeps();
   const response = await handleRequest(makeRequest({ text: 'a'.repeat(60_000), appUserId: VALID_USER }), deps);
@@ -226,8 +271,45 @@ Deno.test('per-user and per-IP limits use the right keys, windows and ceilings',
 
   assertEquals(calls.rate.length, 2);
   assertEquals(calls.rate[0], { key: `u:${VALID_USER}`, window: '2026-08-07T14:03', limit: 6 });
-  assertEquals(calls.rate[1].key, `ip:${await sha256Hex('203.0.113.9')}`);
+  assertEquals(calls.rate[1].window, '2026-08-07T14:03');
   assertEquals(calls.rate[1].limit, 20);
+
+  // Keyed, not a bare digest. The bare digest of an IPv4 address is reversible
+  // by enumeration, so seeing it here would be the bug this guards against.
+  const ipKey = calls.rate[1].key;
+  assert(ipKey.startsWith('ip:'));
+  assertEquals(ipKey.length, 'ip:'.length + 64);
+  assert(ipKey !== `ip:${await sha256Hex('203.0.113.9')}`);
+});
+
+Deno.test('the IP bucket is stable for one address and different for another', async () => {
+  const bucketFor = async (ip: string) => {
+    const { deps, calls } = makeDeps();
+    await handleRequest(makeRequest({ text: 'hello there', appUserId: VALID_USER }, { 'x-forwarded-for': ip }), deps);
+    return calls.rate[1].key;
+  };
+  assertEquals(await bucketFor('203.0.113.9'), await bucketFor('203.0.113.9'));
+  assert(await bucketFor('203.0.113.9') !== await bucketFor('203.0.113.10'));
+});
+
+Deno.test('without the hash secret the IP limit is skipped, not collapsed into one bucket', async () => {
+  _resetIpHashKeyWarning();
+  const warnings: string[] = [];
+  const realError = console.error;
+  console.error = (line: unknown) => warnings.push(String(line));
+  try {
+    const { deps, calls } = makeDeps({ env: { OPENAI_API_KEY: 'sk-test' } });
+    for (const ip of ['203.0.113.9', '203.0.113.10']) {
+      const response = await handleRequest(makeRequest({ text: 'hello there', appUserId: VALID_USER }, { 'x-forwarded-for': ip }), deps);
+      assertEquals(response.status, 200);
+    }
+    // Only the per-user limit ran. A shared fallback key would have put every
+    // caller on the planet into one bucket of 20 a minute.
+    assert(!calls.rate.some((call) => call.key.startsWith('ip:')));
+  } finally {
+    console.error = realError;
+  }
+  assertEquals(warnings.filter((line) => line.includes('ip_limit_unconfigured')).length, 1);
 });
 
 Deno.test('exceeding the user limit returns 429 rate_limited and never reaches the model', async () => {
@@ -298,26 +380,63 @@ Deno.test('no RevenueCat key means everyone is free and RevenueCat is never call
   assert(!calls.fetch.some((call) => call.url.includes('revenuecat')));
 });
 
-Deno.test('an active pro entitlement is never blocked by the quota', async () => {
+/** RevenueCat answering that this user holds a live pro entitlement. */
+function revenueCatPro(url: string): Response {
+  return url.includes('revenuecat')
+    ? new Response(JSON.stringify({ subscriber: { entitlements: { pro: { expires_date: '2099-01-01T00:00:00Z' } } } }), { status: 200 })
+    : openAiSuccess();
+}
+
+Deno.test('an active pro entitlement is charged against the fair-use ceiling of 500', async () => {
   _resetEntitlementCache();
   const { deps, calls } = makeDeps({
     env: { OPENAI_API_KEY: 'sk-test', TIDYNOTE_RC_API_KEY: 'rc-test' },
-    // Even a hard "no" from the counter must not stop a paying user.
-    quota: () => Promise.resolve({ allowed: false, used: 900 }),
-    fetchImpl: (url) =>
-      Promise.resolve(
-        url.includes('revenuecat')
-          ? new Response(JSON.stringify({ subscriber: { entitlements: { pro: { expires_date: '2099-01-01T00:00:00Z' } } } }), { status: 200 })
-          : openAiSuccess(),
-      ),
+    quota: () => Promise.resolve({ allowed: true, used: 42 }),
+    fetchImpl: (url) => Promise.resolve(revenueCatPro(url)),
   });
 
   const response = await handleRequest(makeRequest({ text: 'hello there', appUserId: VALID_USER }), deps);
   assertEquals(response.status, 200);
   const body = await response.json();
   assertEquals(body.plan, 'pro');
-  assertEquals(body.quota.limit, 500);
+  assertEquals(body.quota, { used: 42, limit: 500, remaining: 458, month: '2026-08' });
   assertEquals(calls.quota[0].limit, 500);
+});
+
+Deno.test('a pro caller past the fair-use ceiling is refused like anyone else', async () => {
+  _resetEntitlementCache();
+  const { deps, calls } = makeDeps({
+    env: { OPENAI_API_KEY: 'sk-test', TIDYNOTE_RC_API_KEY: 'rc-test' },
+    // 500 a month is not reachable by hand. A "no" here is a script on a
+    // stolen key, and the ceiling exists to stop it.
+    quota: () => Promise.resolve({ allowed: false, used: 900 }),
+    fetchImpl: (url) => Promise.resolve(revenueCatPro(url)),
+  });
+
+  const response = await handleRequest(makeRequest({ text: 'hello there', appUserId: VALID_USER }), deps);
+  assertEquals(response.status, 429);
+  const body = await response.json();
+  assertEquals(body.error.code, 'quota_exhausted');
+  assertEquals(body.quota, { used: 900, limit: 500, remaining: 0, month: '2026-08' });
+  // Nothing is spent upstream once the ceiling is hit.
+  assert(!calls.fetch.some((call) => call.url.includes('openai')));
+});
+
+Deno.test('a counter that throws still lets a paying user through', async () => {
+  _resetEntitlementCache();
+  const { deps } = makeDeps({
+    env: { OPENAI_API_KEY: 'sk-test', TIDYNOTE_RC_API_KEY: 'rc-test' },
+    quota: () => Promise.reject(new Error('db down')),
+    fetchImpl: (url) => Promise.resolve(revenueCatPro(url)),
+  });
+
+  const response = await handleRequest(makeRequest({ text: 'hello there', appUserId: VALID_USER }), deps);
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.plan, 'pro');
+  // An outage is not evidence of abuse, so the count reads as zero rather than
+  // as a wall.
+  assertEquals(body.quota, { used: 0, limit: 500, remaining: 500, month: '2026-08' });
 });
 
 Deno.test('an expired pro entitlement is free', async () => {
@@ -350,6 +469,32 @@ Deno.test('an unreachable RevenueCat falls open to free', async () => {
     fetchImpl: () => Promise.reject(new Error('network')),
   });
   assertEquals(await resolvePlan(deps, VALID_USER), 'free');
+});
+
+Deno.test('a RevenueCat that never answers is abandoned, and the caller stays free', async () => {
+  _resetEntitlementCache();
+  // 50 ms rather than the production five seconds, so the suite does not wait
+  // out a real timeout to prove the timeout exists.
+  const timeoutMs = 50;
+  const { deps } = makeDeps({
+    env: { OPENAI_API_KEY: 'sk-test', TIDYNOTE_RC_API_KEY: 'rc-test' },
+    revenueCatTimeoutMs: timeoutMs,
+    // Settles only when the handler's own signal fires. Without a timeout on
+    // the fetch this test would hang forever, which is the point.
+    fetchImpl: (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      }),
+  });
+
+  const startedAt = Date.now();
+  // Returning at all is the proof that a signal was passed: the stub settles
+  // only on abort, so a fetch without one would hang here forever.
+  assertEquals(await resolvePlan(deps, VALID_USER), 'free');
+  const elapsed = Date.now() - startedAt;
+  // The injected bound is what fired, not the production one.
+  assert(elapsed >= timeoutMs, `gave up after ${elapsed}ms`);
+  assert(elapsed < REVENUECAT_TIMEOUT_MS, `gave up after ${elapsed}ms`);
 });
 
 Deno.test('a resolved entitlement is cached, a failed one is not', async () => {
