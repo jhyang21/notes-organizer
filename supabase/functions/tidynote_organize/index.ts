@@ -14,12 +14,38 @@
 //
 // The note text is never logged. Neither is the audio: it lives only for the
 // length of the transcription call and is written nowhere.
+//
+// Function secrets this reads, all through `deps.env`:
+//   OPENAI_API_KEY          the organizer and the transcriber. Required.
+//   TIDYNOTE_OPENAI_MODEL   overrides the chat model. Optional.
+//   TIDYNOTE_WHISPER_MODEL  overrides the transcription model. Optional.
+//   TIDYNOTE_RC_API_KEY     RevenueCat. Absent means everyone is on free.
+//   TIDYNOTE_IP_HASH_KEY    keys the per-IP rate-limit bucket. Absent skips
+//                           the IP limit, see `ipRateKey`.
+//   TIDYNOTE_ATTEST_MODE    App Attest: `enforce`, `grace`, or `off`.
+//                           Anything else, including absent, is `enforce`.
+// SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are injected by the platform.
 
 import { createClient, type SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2.56.0';
 import { type Classification, type OrganizedNote, organizeText, type TokenUsage } from './organize.ts';
+import { sha256 as sha256Bytes, verifyAssertion, verifyAttestation } from './attest.ts';
 
 const MAX_TEXT_CHARS = 60_000;
 const APP_USER_ID_PATTERN = /^[A-Za-z0-9:_\-.]{8,80}$/;
+
+// A key ID is the base64 of a SHA-256, so 44 characters with one pad. The
+// shape is checked before anything expensive runs; the value is checked by
+// the attestation itself.
+const KEY_ID_PATTERN = /^[A-Za-z0-9+/\-_]{43}=$/;
+const MAX_ATTESTATION_CHARS = 16_000;
+
+// Attesting is cheap for the caller and expensive here -- a chain to verify
+// and a row to write -- so it gets its own, much tighter, hourly budget. A
+// genuine install attests once per key, so five an hour is already generous.
+const ATTESTS_PER_HOUR = 5;
+// How far the client's clock may be from ours. The timestamp is half of what
+// the attestation signs over, so a wide window is a wide replay window.
+const MAX_ATTESTATION_SKEW_SECONDS = 300;
 
 // Two ceilings on one upload, because either alone has a hole. Bytes stop a
 // padded or high-bitrate file; the client-reported duration stops a long
@@ -71,6 +97,29 @@ export interface QuotaState {
 
 export type Plan = 'free' | 'pro';
 
+/**
+ * How hard App Attest is enforced.
+ *
+ * `enforce` is the only safe resting state and so is the default for anything
+ * unrecognized, including a missing secret: a typo in the value must not
+ * silently turn the control off. `grace` is for the window while an
+ * unattested build is still in the wild -- it logs and lets the request
+ * through. `off` is for an emergency, when verification itself is what is
+ * broken.
+ */
+export type AttestMode = 'enforce' | 'grace' | 'off';
+
+/** One stored App Attest key. `public_key` is a JWK as JSON, because that is
+ * what WebCrypto imports and PostgREST is happy to hold a string. */
+export interface AttestKeyRow {
+  key_id: string;
+  app_user_id: string;
+  rp_id: string;
+  public_key: string;
+  counter: number;
+  last_seen_at?: string;
+}
+
 /** Everything the handler touches that isn't pure, injected so tests never open
  * a socket or need a database. */
 export interface Deps {
@@ -82,6 +131,13 @@ export interface Deps {
   /** Overrides REVENUECAT_TIMEOUT_MS. Only the timeout test sets it, so its
    * hang does not cost the suite five real seconds. Production leaves it out. */
   revenueCatTimeoutMs?: number;
+  /** Injected so index_test.ts can drive the routing without a real chain --
+   * `attest_test.ts` is where the verification itself is tested. */
+  verifyAttestation: typeof verifyAttestation;
+  verifyAssertion: typeof verifyAssertion;
+  getAttestKey(keyId: string): Promise<AttestKeyRow | null>;
+  putAttestKey(row: AttestKeyRow): Promise<void>;
+  touchAttestKey(keyId: string, counter: number): Promise<void>;
 }
 
 // ---------------------------------------------------------------------------
@@ -112,6 +168,17 @@ export function monthKey(now: Date): string {
 
 export function minuteKey(now: Date): string {
   return now.toISOString().slice(0, 16); // 2026-08-07T14:03
+}
+
+/** The window the attest limits count in. Attesting is rare enough that a
+ * minute is the wrong unit -- an hour is. */
+export function hourKey(now: Date): string {
+  return now.toISOString().slice(0, 13); // 2026-08-07T14
+}
+
+/** Anything but `grace` or `off` is `enforce`, including a missing value. */
+export function attestMode(raw: string | undefined): AttestMode {
+  return raw === 'grace' || raw === 'off' ? raw : 'enforce';
 }
 
 export async function sha256Hex(input: string): Promise<string> {
@@ -159,8 +226,11 @@ export function _resetIpHashKeyWarning(): void {
  * drop every caller in the world into one bucket of 20 a minute, so the IP
  * limit is skipped for that request instead. The per-user limit and the monthly
  * quota still apply.
+ *
+ * `prefix` keeps the counters apart: an address attesting has its own budget
+ * from the same address organizing, so spending one never spends the other.
  */
-async function ipRateKey(deps: Deps, ip: string): Promise<string | null> {
+async function ipRateKey(deps: Deps, ip: string, prefix = 'ip'): Promise<string | null> {
   const secret = deps.env('TIDYNOTE_IP_HASH_KEY');
   if (!secret) {
     if (!ipHashKeyWarned) {
@@ -182,7 +252,7 @@ async function ipRateKey(deps: Deps, ip: string): Promise<string | null> {
   const hex = Array.from(new Uint8Array(signature))
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('');
-  return `ip:${hex}`;
+  return `${prefix}:${hex}`;
 }
 
 /** The size the caller says the body is. Null when the header is absent or is
@@ -314,6 +384,99 @@ async function withinRate(deps: Deps, key: string, window: string, limit: number
   }
 }
 
+/** What `handleAttest` hands back: the reply, plus the few fields the caller's
+ * log line needs. */
+interface AttestOutcome {
+  response: Response;
+  status: number;
+  code?: string;
+  userTag?: string;
+}
+
+/**
+ * Registers one App Attest key against one app user id.
+ *
+ * The challenge is not server-issued. A server-issued nonce would need a round
+ * trip and a store to remember it in, and would buy little here: the app signs
+ * over its own id and a timestamp, the timestamp has to be within five minutes
+ * of ours, and the whole exchange is inside TLS. A replay is therefore limited
+ * to re-registering the same key under the same id within five minutes, which
+ * changes nothing.
+ *
+ * Answers 204 with no body. There is nothing to tell the client except that it
+ * worked, and a body would be one more thing to keep in step with the app.
+ */
+async function handleAttest(req: Request, deps: Deps, payload: Record<string, unknown>): Promise<AttestOutcome> {
+  const fail = (code: string, message: string, status: number, userTag?: string): AttestOutcome => ({
+    response: errorResponse(code, message, status),
+    status,
+    code,
+    userTag,
+  });
+
+  const appUserId = typeof payload.appUserId === 'string' ? payload.appUserId : '';
+  const keyId = typeof payload.keyId === 'string' ? payload.keyId : '';
+  const attestation = typeof payload.attestation === 'string' ? payload.attestation : '';
+  const timestamp = typeof payload.timestamp === 'number' ? payload.timestamp : Number.NaN;
+
+  if (!APP_USER_ID_PATTERN.test(appUserId)) return fail('invalid_request', 'appUserId is missing or malformed.', 400);
+  if (!KEY_ID_PATTERN.test(keyId)) return fail('invalid_request', 'keyId is missing or malformed.', 400);
+  if (attestation.length === 0 || attestation.length > MAX_ATTESTATION_CHARS) {
+    return fail('invalid_request', 'attestation is missing or malformed.', 400);
+  }
+  if (!Number.isFinite(timestamp)) return fail('invalid_request', 'timestamp is missing or malformed.', 400);
+
+  const userTag = (await sha256Hex(appUserId)).slice(0, 12);
+  const now = deps.now();
+  const window = hourKey(now);
+
+  if (!(await withinRate(deps, `attest:u:${appUserId}`, window, ATTESTS_PER_HOUR))) {
+    return fail('rate_limited', 'Too many attestation attempts. Try again later.', 429, userTag);
+  }
+  const ip = clientIp(req);
+  if (ip) {
+    const ipKey = await ipRateKey(deps, ip, 'attest:ip');
+    if (ipKey && !(await withinRate(deps, ipKey, window, ATTESTS_PER_HOUR))) {
+      return fail('rate_limited', 'Too many attestation attempts. Try again later.', 429, userTag);
+    }
+  }
+
+  if (Math.abs(Math.floor(now.getTime() / 1000) - timestamp) > MAX_ATTESTATION_SKEW_SECONDS) {
+    return fail('attestation_stale', 'The attestation timestamp is too far from server time.', 400, userTag);
+  }
+
+  const clientDataHash = await sha256Bytes(new TextEncoder().encode(`${appUserId}|${timestamp}`));
+
+  let verified: { publicKeyJwk: JsonWebKey; rpId: string };
+  try {
+    verified = await deps.verifyAttestation({ keyId, attestation, clientDataHash, now });
+  } catch (error) {
+    // The reason never goes back to the caller. Naming the failed step is a
+    // free hint to anyone assembling a forgery, and a genuine app has only one
+    // useful move either way: drop the key and generate another.
+    console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'attestation_rejected', user: userTag, message: String(error) }));
+    return fail('attestation_invalid', 'This key could not be attested.', 401, userTag);
+  }
+
+  try {
+    await deps.putAttestKey({
+      key_id: keyId,
+      app_user_id: appUserId,
+      rp_id: verified.rpId,
+      public_key: JSON.stringify(verified.publicKeyJwk),
+      counter: 0,
+      last_seen_at: now.toISOString(),
+    });
+  } catch (error) {
+    // Separated from the verification failure above so a database outage never
+    // reads to the client as "your key is bad".
+    console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'attest_store_failed', user: userTag, message: String(error) }));
+    return fail('attestation_unavailable', 'Verification is unavailable. Try again shortly.', 503, userTag);
+  }
+
+  return { response: new Response(null, { status: 204 }), status: 204, userTag };
+}
+
 export async function handleRequest(req: Request, deps: Deps): Promise<Response> {
   const startedAt = Date.now();
   let plan: Plan = 'free';
@@ -324,6 +487,7 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
   let classification: Classification | undefined;
   let note: OrganizedNote | undefined;
   let mode: 'text' | 'voice' = 'text';
+  let op: 'organize' | 'attest' = 'organize';
   let audioBytes: number | undefined;
   const model = deps.env('TIDYNOTE_OPENAI_MODEL') || DEFAULT_MODEL;
 
@@ -350,16 +514,33 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
     let locale = '';
     let durationSeconds = 0;
 
+    // The declared-size checks stay ahead of the read, so an oversized upload
+    // is refused before it is buffered.
+    const declared = declaredBodyBytes(req);
+    if (mode === 'voice' && declared !== null && declared > MAX_MULTIPART_BYTES) {
+      status = 413;
+      code = 'audio_too_large';
+      return errorResponse(code, `upload exceeds ${MAX_MULTIPART_BYTES} bytes.`, status);
+    }
+    if (mode === 'text' && declared !== null && declared > MAX_JSON_BYTES) {
+      status = 413;
+      code = 'too_long';
+      return errorResponse(code, `body exceeds ${MAX_JSON_BYTES} bytes.`, status);
+    }
+
+    // Read once, as bytes, because the App Attest assertion signs over exactly
+    // these bytes. Parsing first and re-serializing would sign a different
+    // string: key order, whitespace and multipart boundaries would all have to
+    // survive a round trip, and none of them are guaranteed to.
+    const bodyBytes = new Uint8Array(await req.arrayBuffer());
+    const bodyHash = await sha256Bytes(bodyBytes);
+
     if (mode === 'voice') {
-      const declared = declaredBodyBytes(req);
-      if (declared !== null && declared > MAX_MULTIPART_BYTES) {
-        status = 413;
-        code = 'audio_too_large';
-        return errorResponse(code, `upload exceeds ${MAX_MULTIPART_BYTES} bytes.`, status);
-      }
       let form: FormData;
       try {
-        form = await req.formData();
+        form = await new Response(bodyBytes, {
+          headers: { 'content-type': req.headers.get('content-type') ?? '' },
+        }).formData();
       } catch {
         status = 400;
         code = 'invalid_request';
@@ -373,19 +554,30 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
       const part = form.get('audio');
       audio = part instanceof File ? part : null;
     } else {
-      const declared = declaredBodyBytes(req);
-      if (declared !== null && declared > MAX_JSON_BYTES) {
-        status = 413;
-        code = 'too_long';
-        return errorResponse(code, `body exceeds ${MAX_JSON_BYTES} bytes.`, status);
-      }
-      let payload: { text?: unknown; appUserId?: unknown; clientVersion?: unknown };
+      let payload: { op?: unknown; text?: unknown; appUserId?: unknown; clientVersion?: unknown };
       try {
-        payload = await req.json();
+        payload = JSON.parse(new TextDecoder().decode(bodyBytes));
       } catch {
         status = 400;
         code = 'invalid_request';
         return errorResponse(code, 'Body must be JSON.', status);
+      }
+      if (payload === null || typeof payload !== 'object') {
+        status = 400;
+        code = 'invalid_request';
+        return errorResponse(code, 'Body must be JSON.', status);
+      }
+
+      // The one request that is not a tidy: an install registering its App
+      // Attest key. It answers and returns before any of the organize path
+      // runs, and spends no quota.
+      if (payload.op === 'attest') {
+        op = 'attest';
+        const outcome = await handleAttest(req, deps, payload as Record<string, unknown>);
+        status = outcome.status;
+        code = outcome.code;
+        userTag = outcome.userTag ?? userTag;
+        return outcome.response;
       }
 
       const rawText = typeof payload.text === 'string' ? payload.text : '';
@@ -430,6 +622,77 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
         code = 'too_long';
         return errorResponse(code, `text exceeds ${MAX_TEXT_CHARS} characters.`, status);
       }
+    }
+
+    // --- attestation ------------------------------------------------------
+    // Ahead of the rate limit and the quota on purpose: a caller who cannot
+    // prove it is the app must not be able to spend either of them, not even
+    // to exhaust someone else's.
+    const attest = attestMode(deps.env('TIDYNOTE_ATTEST_MODE'));
+    const keyIdHeader = req.headers.get('x-tidynote-key-id');
+    const assertionHeader = req.headers.get('x-tidynote-assertion');
+
+    if (attest === 'off') {
+      // The kill switch. Nothing is required and nothing is checked, because
+      // the reason to reach for this is verification itself being broken.
+    } else if (keyIdHeader !== null || assertionHeader !== null) {
+      // Half a pair proves nothing, and reading it as "absent" would let any
+      // caller opt out of enforcement by sending one header.
+      if (keyIdHeader === null || assertionHeader === null) {
+        status = 401;
+        code = 'attestation_invalid';
+        return errorResponse(code, 'This request is not attested.', status);
+      }
+
+      let row: AttestKeyRow | null;
+      try {
+        row = await deps.getAttestKey(keyIdHeader);
+      } catch (error) {
+        // The key store being unreachable is an outage, not a forgery. A 401
+        // here would tell a genuine install to throw its hardware key away and
+        // start an attestation storm on the way back up.
+        console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'attest_lookup_failed', user: userTag, message: String(error) }));
+        status = 503;
+        code = 'attestation_unavailable';
+        return errorResponse(code, 'Verification is unavailable. Try again shortly.', status);
+      }
+
+      let counter: number;
+      try {
+        if (!row) throw new Error('unknown key id');
+        // The key is bound to the id it attested under, so borrowing another
+        // install's app user id fails here even holding a real device key.
+        if (row.app_user_id !== appUserId) throw new Error('key belongs to another app user');
+        ({ counter } = await deps.verifyAssertion({
+          assertion: assertionHeader,
+          clientDataHash: bodyHash,
+          publicKeyJwk: JSON.parse(row.public_key),
+          rpId: row.rp_id,
+          previousCounter: Number(row.counter ?? 0),
+        }));
+      } catch (error) {
+        console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'assertion_rejected', user: userTag, message: String(error) }));
+        status = 401;
+        code = 'attestation_invalid';
+        return errorResponse(code, 'This request is not attested.', status);
+      }
+
+      try {
+        await deps.touchAttestKey(keyIdHeader, counter);
+      } catch (error) {
+        // The signature was good. A lost counter write costs replay protection
+        // for this one key until the next write lands, which is a smaller harm
+        // than refusing a request that proved who sent it.
+        console.error(JSON.stringify({ tag: 'tidynote_organize', event: 'attest_touch_failed', user: userTag, message: String(error) }));
+      }
+    } else if (attest === 'enforce') {
+      status = 426;
+      code = 'update_required';
+      return errorResponse(code, 'This version of TidyNote is no longer supported. Update to keep tidying.', status);
+    } else {
+      // Grace. One line per unattested caller, which is how we watch the old
+      // builds drain away before enforcement is switched on.
+      console.log(JSON.stringify({ tag: 'tidynote_organize', event: 'unattested', user: userTag }));
     }
 
     // --- rate limit -------------------------------------------------------
@@ -566,6 +829,7 @@ export async function handleRequest(req: Request, deps: Deps): Promise<Response>
         status,
         plan,
         mode,
+        op,
         user: userTag,
         model,
         ...(audioBytes !== undefined ? { audio_bytes: audioBytes } : {}),
@@ -621,6 +885,40 @@ export function productionDeps(): Deps {
       const row = Array.isArray(data) ? data[0] : data;
       if (!row) throw new Error('tidynote_consume_quota returned no row');
       return { allowed: row.allowed === true, used: Number(row.used ?? 0) };
+    },
+    verifyAttestation,
+    verifyAssertion,
+    // Plain table reads and writes rather than an RPC: there is no atomicity to
+    // arrange here, and the service role reaches the table directly. RLS is on
+    // with no policies, so nothing else can.
+    async getAttestKey(keyId) {
+      const { data, error } = await serviceClient()
+        .from('tidynote_attest_keys')
+        .select('key_id, app_user_id, rp_id, public_key, counter')
+        .eq('key_id', keyId)
+        .maybeSingle();
+      if (error) throw new Error(error.message);
+      if (!data) return null;
+      return {
+        key_id: data.key_id,
+        app_user_id: data.app_user_id,
+        rp_id: data.rp_id,
+        public_key: data.public_key,
+        counter: Number(data.counter ?? 0),
+      };
+    },
+    async putAttestKey(row) {
+      const { error } = await serviceClient()
+        .from('tidynote_attest_keys')
+        .upsert(row, { onConflict: 'key_id' });
+      if (error) throw new Error(error.message);
+    },
+    async touchAttestKey(keyId, counter) {
+      const { error } = await serviceClient()
+        .from('tidynote_attest_keys')
+        .update({ counter, last_seen_at: new Date().toISOString() })
+        .eq('key_id', keyId);
+      if (error) throw new Error(error.message);
     },
   };
 }

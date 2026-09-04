@@ -5,17 +5,21 @@
 
 import { assert, assertEquals, assertStringIncludes } from 'https://deno.land/std@0.224.0/assert/mod.ts';
 import {
+  type AttestKeyRow,
+  attestMode,
   type Deps,
   _resetEntitlementCache,
   _resetIpHashKeyWarning,
   clientIp,
   handleRequest,
+  hourKey,
   minuteKey,
   monthKey,
   REVENUECAT_TIMEOUT_MS,
   resolvePlan,
   sha256Hex,
 } from './index.ts';
+import { APP_IDS, sha256 } from './attest.ts';
 import type { OrganizedNote } from './organize.ts';
 
 const VALID_USER = 'tidy:11111111-2222-3333-4444-555555555555';
@@ -57,6 +61,32 @@ interface StubOptions {
   quota?: (userId: string, month: string, limit: number) => Promise<{ allowed: boolean; used: number }>;
   fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>;
   revenueCatTimeoutMs?: number;
+  /** The TIDYNOTE_ATTEST_MODE secret. Defaults to `off` rather than to
+   * production's `enforce`, because every test written before App Attest
+   * existed sends no assertion headers and expects to be served. `null` means
+   * the secret is not set at all, which is how the default is tested. */
+  attestMode?: string | null;
+  /** Rows already in the key store when the request arrives. */
+  attestKeys?: AttestKeyRow[];
+  verifyAttestation?: Deps['verifyAttestation'];
+  verifyAssertion?: Deps['verifyAssertion'];
+}
+
+/** A stand-in for a verified leaf key. Nothing in index.ts looks inside it --
+ * it only stores the JSON and hands it back to the verifier. */
+const STUB_JWK: JsonWebKey = { kty: 'EC', crv: 'P-256', x: 'stub-x', y: 'stub-y' };
+const VALID_KEY_ID = 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=';
+const OTHER_KEY_ID = 'BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB=';
+
+function storedKey(overrides: Partial<AttestKeyRow> = {}): AttestKeyRow {
+  return {
+    key_id: VALID_KEY_ID,
+    app_user_id: VALID_USER,
+    rp_id: APP_IDS[0],
+    public_key: JSON.stringify(STUB_JWK),
+    counter: 3,
+    ...overrides,
+  };
 }
 
 function makeDeps(options: StubOptions = {}) {
@@ -64,7 +94,12 @@ function makeDeps(options: StubOptions = {}) {
     rate: [] as { key: string; window: string; limit: number }[],
     quota: [] as { userId: string; month: string; limit: number }[],
     fetch: [] as FetchCall[],
+    attestation: [] as Parameters<Deps['verifyAttestation']>[0][],
+    assertion: [] as Parameters<Deps['verifyAssertion']>[0][],
   };
+
+  const keys = new Map<string, AttestKeyRow>();
+  for (const row of options.attestKeys ?? []) keys.set(row.key_id, { ...row });
 
   const deps: Deps = {
     fetch: ((input: string | URL | Request, init?: RequestInit) => {
@@ -72,7 +107,15 @@ function makeDeps(options: StubOptions = {}) {
       calls.fetch.push({ url, init });
       return options.fetchImpl ? options.fetchImpl(url, init) : Promise.resolve(openAiSuccess());
     }) as typeof fetch,
-    env: (key: string) => (options.env ?? { OPENAI_API_KEY: 'sk-test', TIDYNOTE_IP_HASH_KEY: IP_HASH_KEY })[key],
+    env: (key: string) => {
+      // Layered over `options.env` rather than folded into it, so a test that
+      // passes `env: {}` to drop the OpenAI key does not also turn App Attest
+      // enforcement on by accident.
+      if (key === 'TIDYNOTE_ATTEST_MODE') {
+        return options.attestMode === null ? undefined : options.attestMode ?? 'off';
+      }
+      return (options.env ?? { OPENAI_API_KEY: 'sk-test', TIDYNOTE_IP_HASH_KEY: IP_HASH_KEY })[key];
+    },
     now: () => options.now ?? FIXED_NOW,
     consumeRate: (key, window, limit) => {
       calls.rate.push({ key, window, limit });
@@ -83,9 +126,29 @@ function makeDeps(options: StubOptions = {}) {
       return options.quota ? options.quota(userId, month, limit) : Promise.resolve({ allowed: true, used: 1 });
     },
     revenueCatTimeoutMs: options.revenueCatTimeoutMs,
+    verifyAttestation: (input) => {
+      calls.attestation.push(input);
+      return options.verifyAttestation
+        ? options.verifyAttestation(input)
+        : Promise.resolve({ publicKeyJwk: STUB_JWK, rpId: APP_IDS[0] });
+    },
+    verifyAssertion: (input) => {
+      calls.assertion.push(input);
+      return options.verifyAssertion ? options.verifyAssertion(input) : Promise.resolve({ counter: 9 });
+    },
+    getAttestKey: (keyId) => Promise.resolve(keys.get(keyId) ?? null),
+    putAttestKey: (row) => {
+      keys.set(row.key_id, { ...row });
+      return Promise.resolve();
+    },
+    touchAttestKey: (keyId, counter) => {
+      const row = keys.get(keyId);
+      if (row) row.counter = counter;
+      return Promise.resolve();
+    },
   };
 
-  return { deps, calls };
+  return { deps, calls, keys };
 }
 
 function makeRequest(body: unknown, headers: Record<string, string> = {}): Request {
@@ -112,6 +175,7 @@ function audioFile(bytes = 2048): File {
  * the part out altogether. */
 function makeVoiceRequest(
   fields: { audio?: File | null; appUserId?: string; durationSeconds?: string; locale?: string } = {},
+  headers: Record<string, string> = {},
 ): Request {
   const form = new FormData();
   if (fields.audio !== null) form.append('audio', fields.audio ?? audioFile());
@@ -119,7 +183,9 @@ function makeVoiceRequest(
   form.append('clientVersion', '1.3.0');
   form.append('durationSeconds', fields.durationSeconds ?? '12');
   if (fields.locale) form.append('locale', fields.locale);
-  return new Request('https://example.test/functions/v1/tidynote_organize', { method: 'POST', body: form });
+  // No Content-Type here: leaving it out lets the form set its own, boundary
+  // and all, which is the whole reason the handler can parse it back.
+  return new Request('https://example.test/functions/v1/tidynote_organize', { method: 'POST', body: form, headers });
 }
 
 /** makeDeps with a fetch that answers both upstream calls a voice request
@@ -787,4 +853,305 @@ Deno.test('the text path gained no transcript field', async () => {
   const response = await handleRequest(makeRequest({ text: 'call the dentist', appUserId: VALID_USER }), deps);
   const body = await response.json();
   assertEquals(Object.keys(body).sort(), ['note', 'plan', 'quota']);
+});
+
+// ---------------------------------------------------------------------------
+// App Attest
+// ---------------------------------------------------------------------------
+
+/** The verifier is stubbed everywhere in this file, so the bytes only have to
+ * be base64 of a plausible length. attest_test.ts is where real attestation
+ * and assertion objects are checked. */
+const ATTESTATION = btoa('a stand-in for an attestation object');
+const ASSERTION = btoa('a stand-in for an assertion object');
+const FIXED_TIMESTAMP = Math.floor(FIXED_NOW.getTime() / 1000);
+const OTHER_USER = 'tidy:99999999-8888-7777-6666-555555555555';
+
+function makeAttestRequest(fields: Record<string, unknown> = {}, headers: Record<string, string> = {}): Request {
+  return makeRequest({
+    op: 'attest',
+    appUserId: VALID_USER,
+    keyId: VALID_KEY_ID,
+    attestation: ATTESTATION,
+    timestamp: FIXED_TIMESTAMP,
+    ...fields,
+  }, headers);
+}
+
+function attestedHeaders(keyId = VALID_KEY_ID, assertion = ASSERTION): Record<string, string> {
+  return { 'X-TidyNote-Key-Id': keyId, 'X-TidyNote-Assertion': assertion };
+}
+
+/** Runs `body` with console.log captured, and hands back the lines. */
+async function capturingLog(body: () => Promise<void>): Promise<string[]> {
+  const lines: string[] = [];
+  const real = console.log;
+  console.log = (line: unknown) => lines.push(String(line));
+  try {
+    await body();
+  } finally {
+    console.log = real;
+  }
+  return lines;
+}
+
+Deno.test('anything but grace or off enforces, including an unset secret', () => {
+  assertEquals(attestMode(undefined), 'enforce');
+  assertEquals(attestMode(''), 'enforce');
+  assertEquals(attestMode('Enforce'), 'enforce');
+  assertEquals(attestMode('disabled'), 'enforce');
+  assertEquals(attestMode('grace'), 'grace');
+  assertEquals(attestMode('off'), 'off');
+});
+
+Deno.test('hourKey is UTC and truncated to the hour', () => {
+  assertEquals(hourKey(FIXED_NOW), '2026-08-07T14');
+});
+
+// --- registering a key -----------------------------------------------------
+
+Deno.test('a valid attestation stores the key against the app user id', async () => {
+  const { deps, calls, keys } = makeDeps();
+  const response = await handleRequest(makeAttestRequest(), deps);
+
+  assertEquals(response.status, 204);
+  assertEquals(await response.text(), '');
+
+  const row = keys.get(VALID_KEY_ID);
+  assert(row, 'the key should have been stored');
+  assertEquals(row.app_user_id, VALID_USER);
+  assertEquals(row.rp_id, APP_IDS[0]);
+  assertEquals(row.counter, 0);
+  assertEquals(JSON.parse(row.public_key), STUB_JWK);
+
+  // Registering a key is not a tidy, so it costs nothing.
+  assertEquals(calls.quota.length, 0);
+  // The challenge is the app user id and the timestamp, which is what binds
+  // the key to the install rather than to whoever posted the bytes.
+  assertEquals(
+    calls.attestation[0].clientDataHash,
+    await sha256(new TextEncoder().encode(`${VALID_USER}|${FIXED_TIMESTAMP}`)),
+  );
+});
+
+Deno.test('a timestamp far from server time is stale, and never reaches the verifier', async () => {
+  const { deps, calls } = makeDeps();
+  for (const timestamp of [FIXED_TIMESTAMP - 301, FIXED_TIMESTAMP + 301]) {
+    const response = await handleRequest(makeAttestRequest({ timestamp }), deps);
+    assertEquals(response.status, 400);
+    assertEquals((await response.json()).error.code, 'attestation_stale');
+  }
+  assertEquals(calls.attestation.length, 0);
+});
+
+Deno.test('attestation is limited to five an hour for one install', async () => {
+  const { deps, calls } = makeDeps({ rate: (key) => Promise.resolve(!key.startsWith('attest:u:')) });
+  const response = await handleRequest(makeAttestRequest(), deps);
+
+  assertEquals(response.status, 429);
+  assertEquals((await response.json()).error.code, 'rate_limited');
+  assertEquals(calls.rate[0].key, `attest:u:${VALID_USER}`);
+  assertEquals(calls.rate[0].window, hourKey(FIXED_NOW));
+  assertEquals(calls.rate[0].limit, 5);
+  assertEquals(calls.attestation.length, 0);
+});
+
+Deno.test('the attest IP bucket is its own, so it cannot drain the organize one', async () => {
+  const { deps, calls } = makeDeps();
+  await handleRequest(makeAttestRequest({}, { 'x-forwarded-for': '203.0.113.9' }), deps);
+  const ipCall = calls.rate.find((call) => call.key.startsWith('attest:ip:'));
+  assert(ipCall, 'the attest IP bucket should have been counted');
+  assertEquals(ipCall.limit, 5);
+  assertEquals(ipCall.window, hourKey(FIXED_NOW));
+});
+
+Deno.test('an attestation the verifier rejects stores nothing', async () => {
+  const { deps, keys } = makeDeps({ verifyAttestation: () => Promise.reject(new Error('nonce_mismatch')) });
+  const response = await handleRequest(makeAttestRequest(), deps);
+
+  assertEquals(response.status, 401);
+  assertEquals((await response.json()).error.code, 'attestation_invalid');
+  assertEquals(keys.size, 0);
+});
+
+Deno.test('a malformed attest payload is refused before the verifier runs', async () => {
+  const { deps, calls } = makeDeps();
+  const cases: Record<string, unknown>[] = [
+    { appUserId: 'nope' },
+    { keyId: 'too-short' },
+    { keyId: 'x'.repeat(44) },
+    { attestation: '' },
+    { attestation: 'a'.repeat(16_001) },
+    { timestamp: 'yesterday' },
+  ];
+  for (const fields of cases) {
+    const response = await handleRequest(makeAttestRequest(fields), deps);
+    assertEquals(response.status, 400);
+    assertEquals((await response.json()).error.code, 'invalid_request');
+  }
+  assertEquals(calls.attestation.length, 0);
+});
+
+Deno.test('a key store that will not write is an outage, not a bad key', async () => {
+  const { deps } = makeDeps();
+  deps.putAttestKey = () => Promise.reject(new Error('connection refused'));
+  const response = await handleRequest(makeAttestRequest(), deps);
+
+  assertEquals(response.status, 503);
+  assertEquals((await response.json()).error.code, 'attestation_unavailable');
+});
+
+// --- spending under an assertion -------------------------------------------
+
+Deno.test('an attested tidy is served and the counter moves', async () => {
+  const { deps, calls, keys } = makeDeps({ attestMode: 'enforce', attestKeys: [storedKey()] });
+  const body = { text: 'hello there', appUserId: VALID_USER };
+  const response = await handleRequest(makeRequest(body, attestedHeaders()), deps);
+
+  assertEquals(response.status, 200);
+  assertEquals(keys.get(VALID_KEY_ID)?.counter, 9);
+
+  const seen = calls.assertion[0];
+  assertEquals(seen.rpId, APP_IDS[0]);
+  assertEquals(seen.previousCounter, 3);
+  assertEquals(seen.publicKeyJwk, STUB_JWK);
+  // Signed over the bytes that were actually sent. Re-serializing the parsed
+  // body would produce a different string and a signature that never verifies.
+  assertEquals(seen.clientDataHash, await sha256(new TextEncoder().encode(JSON.stringify(body))));
+});
+
+Deno.test('a voice tidy carries an assertion the same way', async () => {
+  const { deps, calls } = makeVoiceDeps({ attestMode: 'enforce', attestKeys: [storedKey()] });
+  const response = await handleRequest(makeVoiceRequest({}, attestedHeaders()), deps);
+
+  assertEquals(response.status, 200);
+  assertEquals(calls.assertion.length, 1);
+  // The multipart body was parsed from the same bytes the assertion covers,
+  // boundary included.
+  assertEquals(calls.assertion[0].previousCounter, 3);
+});
+
+Deno.test('a key bound to another install cannot spend this one', async () => {
+  const { deps, calls } = makeDeps({
+    attestMode: 'enforce',
+    attestKeys: [storedKey({ app_user_id: OTHER_USER })],
+  });
+  const response = await handleRequest(makeRequest({ text: 'hello there', appUserId: VALID_USER }, attestedHeaders()), deps);
+
+  assertEquals(response.status, 401);
+  assertEquals((await response.json()).error.code, 'attestation_invalid');
+  // Nothing was spent proving the caller was not who it claimed to be.
+  assertEquals(calls.rate.length, 0);
+  assertEquals(calls.quota.length, 0);
+});
+
+Deno.test('a key id nobody registered is refused', async () => {
+  const { deps, calls } = makeDeps({ attestMode: 'enforce', attestKeys: [storedKey()] });
+  const response = await handleRequest(
+    makeRequest({ text: 'hello there', appUserId: VALID_USER }, attestedHeaders(OTHER_KEY_ID)),
+    deps,
+  );
+
+  assertEquals(response.status, 401);
+  assertEquals((await response.json()).error.code, 'attestation_invalid');
+  assertEquals(calls.quota.length, 0);
+});
+
+Deno.test('an assertion the verifier rejects spends nothing', async () => {
+  const { deps, calls } = makeDeps({
+    attestMode: 'enforce',
+    attestKeys: [storedKey()],
+    verifyAssertion: () => Promise.reject(new Error('counter_replayed')),
+  });
+  const response = await handleRequest(makeRequest({ text: 'hello there', appUserId: VALID_USER }, attestedHeaders()), deps);
+
+  assertEquals(response.status, 401);
+  assertEquals((await response.json()).error.code, 'attestation_invalid');
+  assertEquals(calls.quota.length, 0);
+});
+
+Deno.test('a key store that will not answer is an outage, not a forgery', async () => {
+  const { deps, calls } = makeDeps({ attestMode: 'enforce', attestKeys: [storedKey()] });
+  deps.getAttestKey = () => Promise.reject(new Error('connection refused'));
+  const response = await handleRequest(makeRequest({ text: 'hello there', appUserId: VALID_USER }, attestedHeaders()), deps);
+
+  assertEquals(response.status, 503);
+  assertEquals((await response.json()).error.code, 'attestation_unavailable');
+  assertEquals(calls.quota.length, 0);
+});
+
+Deno.test('a lost counter write does not refuse a request that proved itself', async () => {
+  const { deps } = makeDeps({ attestMode: 'enforce', attestKeys: [storedKey()] });
+  deps.touchAttestKey = () => Promise.reject(new Error('connection refused'));
+  const response = await handleRequest(makeRequest({ text: 'hello there', appUserId: VALID_USER }, attestedHeaders()), deps);
+
+  assertEquals(response.status, 200);
+});
+
+Deno.test('half a header pair is not an attestation, whatever the mode', async () => {
+  const halves: Record<string, string>[] = [{ 'X-TidyNote-Key-Id': VALID_KEY_ID }, { 'X-TidyNote-Assertion': ASSERTION }];
+  for (const headers of halves) {
+    const { deps, calls } = makeDeps({ attestMode: 'grace', attestKeys: [storedKey()] });
+    const response = await handleRequest(makeRequest({ text: 'hello there', appUserId: VALID_USER }, headers), deps);
+    assertEquals(response.status, 401);
+    assertEquals((await response.json()).error.code, 'attestation_invalid');
+    assertEquals(calls.quota.length, 0);
+  }
+});
+
+// --- the three modes -------------------------------------------------------
+
+Deno.test('an unattested tidy is told to update when enforcement is on', async () => {
+  const { deps, calls } = makeDeps({ attestMode: 'enforce' });
+  const response = await handleRequest(makeRequest({ text: 'hello there', appUserId: VALID_USER }), deps);
+
+  assertEquals(response.status, 426);
+  const body = await response.json();
+  assertEquals(body.error.code, 'update_required');
+  assertStringIncludes(body.error.message, 'Update');
+  assertEquals(calls.quota.length, 0);
+});
+
+Deno.test('an unset or unrecognized mode enforces', async () => {
+  for (const mode of [null, 'sometimes']) {
+    const { deps } = makeDeps({ attestMode: mode });
+    const response = await handleRequest(makeRequest({ text: 'hello there', appUserId: VALID_USER }), deps);
+    assertEquals(response.status, 426);
+    assertEquals((await response.json()).error.code, 'update_required');
+  }
+});
+
+Deno.test('grace serves an unattested tidy and logs one line about it', async () => {
+  const { deps } = makeDeps({ attestMode: 'grace' });
+  let status = 0;
+  const lines = await capturingLog(async () => {
+    const response = await handleRequest(makeRequest({ text: 'hello there', appUserId: VALID_USER }), deps);
+    status = response.status;
+    await response.json();
+  });
+
+  assertEquals(status, 200);
+  const unattested = lines.map((line) => JSON.parse(line)).filter((entry) => entry.event === 'unattested');
+  assertEquals(unattested.length, 1);
+  assertEquals(unattested[0].tag, 'tidynote_organize');
+  assertEquals(unattested[0].user, (await sha256Hex(VALID_USER)).slice(0, 12));
+});
+
+Deno.test('off checks nothing, even when headers are sent', async () => {
+  const { deps, calls } = makeDeps({
+    attestMode: 'off',
+    verifyAssertion: () => Promise.reject(new Error('would have failed')),
+  });
+  const response = await handleRequest(makeRequest({ text: 'hello there', appUserId: VALID_USER }, attestedHeaders()), deps);
+
+  assertEquals(response.status, 200);
+  assertEquals(calls.assertion.length, 0);
+});
+
+Deno.test('registering a key still works with enforcement on, since it carries no assertion', async () => {
+  const { deps, keys } = makeDeps({ attestMode: 'enforce' });
+  const response = await handleRequest(makeAttestRequest(), deps);
+
+  assertEquals(response.status, 204);
+  assert(keys.has(VALID_KEY_ID));
 });
