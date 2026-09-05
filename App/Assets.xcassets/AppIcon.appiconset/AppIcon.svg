@@ -1,6 +1,9 @@
-<!-- Source for AppIcon-1024.png. Regenerate with:
-     python -c "import cairosvg,io; from PIL import Image; png=cairosvg.svg2png(url='AppIcon.svg', output_width=1024, output_height=1024); im=Image.open(io.BytesIO(png)).convert('RGBA'); bg=Image.new('RGB', im.size, '#FFFFFF'); bg.paste(im, mask=im.split()[3]); bg.save('AppIcon-1024.png')"
-     Flat, full bleed, no rounded corners: iOS applies its own mask. Nothing sits closer than 90 px to an edge. -->
+<!-- Source geometry for all three AppIcon PNGs: light, iOS 18 dark, iOS 18
+     tinted. Regenerate them with: python scripts/render_app_icon.py all
+     That script reads the shapes below and recolors them; it owns the dark and
+     tinted palettes, and its docstring says why each color is what it is.
+     Flat, full bleed, no rounded corners: iOS applies its own mask. Nothing
+     sits closer than 90 px to an edge. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
   <rect width="1024" height="1024" fill="#FFFFFF"/>
 
