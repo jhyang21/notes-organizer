@@ -1,25 +1,9 @@
-<!-- Source for AppIcon-1024.png. Regenerate with:
-     python -c "import cairosvg,io; from PIL import Image; png=cairosvg.svg2png(url='AppIcon.svg', output_width=1024, output_height=1024); im=Image.open(io.BytesIO(png)).convert('RGBA'); bg=Image.new('RGB', im.size, '#FFFFFF'); bg.paste(im, mask=im.split()[3]); bg.save('AppIcon-1024.png')"
-     Flat, full bleed, no rounded corners: iOS applies its own mask. Nothing sits closer than 90 px to an edge.
-
-     iOS 18 also ships dark and tinted variants (transparent background, no
-     white rect, glyph recolored). They reuse this file's exact geometry but
-     need per-shape color overrides that a plain string-replace on this SVG
-     can't express (the arrow and the first list bar share the same source
-     hex but take different target colors), so they're built by
-     scripts/render_app_icon.py instead of an inline one-liner. Regenerate
-     both, or all three, with:
-       python scripts/render_app_icon.py dark
-       python scripts/render_app_icon.py tinted
-       python scripts/render_app_icon.py all
-     dark:   background transparent; violet accent (#6C3FD1) -> #8F6EFF
-             (SharedAssets dark accent); near-black strokes/bars (#1C1B1F)
-             -> white (would be invisible on Apple's dark gradient otherwise).
-     tinted: background transparent; whole glyph grayscale (R==G==B) so
-             Apple's tint recolors it by luminance. Messy strokes + the
-             four-bar list (the two dominant masses) -> near white (#F2F2F2)
-             as the "main" strokes; the small connecting arrow -> mid-gray
-             (#808080) as the "secondary" detail. -->
+<!-- Source geometry for all three AppIcon PNGs: light, iOS 18 dark, iOS 18
+     tinted. Regenerate them with: python scripts/render_app_icon.py all
+     That script reads the shapes below and recolors them; it owns the dark and
+     tinted palettes, and its docstring says why each color is what it is.
+     Flat, full bleed, no rounded corners: iOS applies its own mask. Nothing
+     sits closer than 90 px to an edge. -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
   <rect width="1024" height="1024" fill="#FFFFFF"/>
 
