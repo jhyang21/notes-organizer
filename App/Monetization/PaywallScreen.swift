@@ -13,7 +13,7 @@ import SwiftUI
 struct PaywallScreen: View {
     /// One shape for both a failed purchase and a failed restore's alert —
     /// the copy differs, the plumbing doesn't need to.
-    private struct StoreAlert: Equatable {
+    private struct StoreAlert {
         let title: String
         let message: String
     }

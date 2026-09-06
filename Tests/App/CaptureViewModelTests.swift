@@ -130,9 +130,7 @@ struct CaptureViewModelTests {
     /// - Parameters:
     ///   - organizer: a `MockOrganizer` for a tidy that answers, a
     ///     `SlowOrganizer` for one a test wants to catch mid-wait.
-    ///   - connectivity: whether the phone is online. Defaults to online, so
-    ///     a test that says nothing about it records the way every test
-    ///     before this mock existed did.
+    ///   - connectivity: whether the phone is online. Defaults to online.
     ///   - drafts: writes nowhere unless a test asks for a real slot. A test
     ///     that says nothing about drafts must not touch the one on the
     ///     machine running it.
