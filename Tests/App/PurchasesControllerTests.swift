@@ -167,4 +167,28 @@ struct PurchasesControllerTests {
         #expect(rig.store.isPro() == false)
         #expect(rig.controller.isRestoring == false)
     }
+
+    // MARK: - Store failures
+
+    @Test("a failed purchase gets fixed copy, and the real error goes to the log")
+    func reportPurchaseFailure() throws {
+        let defaults = try EphemeralDefaults()
+        let rig = makeRig(defaults)
+
+        let failure = rig.controller.report(.purchase, error: StoreUnreachable())
+
+        #expect(failure == .purchase)
+        #expect(failure.message == "Check your connection and try again.")
+        #expect(rig.log.events().contains { $0.message.contains("503") })
+    }
+
+    @Test("a failed restore reads the same on the paywall as it does in Settings")
+    func reportRestoreFailureMatchesSettings() throws {
+        let defaults = try EphemeralDefaults()
+        let rig = makeRig(defaults)
+
+        let failure = rig.controller.report(.restore, error: StoreUnreachable())
+
+        #expect(failure.title == PurchasesController.RestoreOutcome.failed.title)
+    }
 }

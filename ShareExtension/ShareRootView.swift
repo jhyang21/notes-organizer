@@ -58,6 +58,10 @@ struct ShareRootView: View {
                     }
                 }
         }
+        // The share sheet hands down the host's tint; from Apple Notes that
+        // is yellow. Outside the `NavigationStack` so it covers Cancel and
+        // Done in the bar along with everything `content` draws.
+        .tint(Color("AccentColor"))
         .animation(.default, value: model.state)
         .task {
             await model.start(with: items)
