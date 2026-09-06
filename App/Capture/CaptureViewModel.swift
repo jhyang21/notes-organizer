@@ -76,6 +76,7 @@ final class CaptureViewModel {
     private let log: DiagnosticsLog
     private let locale: Locale
     private let recorder: any AudioRecording
+    private let connectivity: any ConnectivityChecking
     private let silence: SilenceDetector.Configuration
     private let drafts: DraftStore
     private let isAppInForeground: @MainActor () -> Bool
@@ -98,6 +99,8 @@ final class CaptureViewModel {
     /// - Parameters:
     ///   - recorder: the microphone. Injected for the same reason `routing`
     ///     is — a CI simulator has neither one.
+    ///   - connectivity: whether the phone has a network path. Injected so a
+    ///     test can say offline without a real network to take away.
     ///   - silence: when a recording stops itself. Injected so a test can
     ///     reach the auto-stop without waiting ten seconds for it.
     ///   - drafts: the note the app is holding between launches. Injected so
@@ -111,6 +114,7 @@ final class CaptureViewModel {
         log: DiagnosticsLog = .shared,
         locale: Locale = .current,
         recorder: any AudioRecording = AudioRecorderService(),
+        connectivity: any ConnectivityChecking = ConnectivityMonitor.shared,
         silence: SilenceDetector.Configuration = .default,
         drafts: DraftStore = .shared,
         isAppInForeground: @escaping @MainActor () -> Bool = { UIApplication.shared.applicationState != .background }
@@ -119,6 +123,7 @@ final class CaptureViewModel {
         self.log = log
         self.locale = locale
         self.recorder = recorder
+        self.connectivity = connectivity
         self.silence = silence
         self.drafts = drafts
         self.isAppInForeground = isAppInForeground
@@ -208,7 +213,11 @@ final class CaptureViewModel {
             reset()
         default:
             guard recording != nil else {
-                reset()
+                // Nothing to re-send: this dead end came before the microphone.
+                // Try again means try recording again, and the kept note stays.
+                abandonCapture()
+                state = .idle
+                startCapture()
                 return
             }
             startOrganize()
@@ -323,6 +332,13 @@ final class CaptureViewModel {
 
     private func runCaptureLifecycle() async {
         state = .requestingPermissions
+        guard await connectivity.isOnline() else {
+            log.recordEvent(source: .app, message: "Recording blocked: offline")
+            state = .unavailable(.networkUnavailable)
+            return
+        }
+        guard !Task.isCancelled else { return }
+
         guard await recorder.requestPermission() else {
             state = .failed(.microphonePermissionDenied)
             return

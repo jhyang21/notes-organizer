@@ -19,12 +19,18 @@ private final class MockRecorder: AudioRecording {
     /// `AVAudioRecorder` itself: a lost session turns it false on its own.
     private(set) var isRecording = false
     private(set) var startCount = 0
+    /// How many times the microphone was asked for permission — a
+    /// connectivity check that blocks first should keep this at zero.
+    private(set) var permissionRequests = 0
     /// Started and not yet stopped — the mock's stand-in for the service's
     /// recorder object, which outlives the session it was running.
     private var isStarted = false
     private var levels: AsyncStream<Float>.Continuation?
 
-    func requestPermission() async -> Bool { permissionGranted }
+    func requestPermission() async -> Bool {
+        permissionRequests += 1
+        return permissionGranted
+    }
 
     func start() throws -> AsyncStream<Float> {
         if let startError { throw startError }
@@ -56,6 +62,17 @@ private final class MockRecorder: AudioRecording {
     func loseSession() {
         isRecording = false
     }
+}
+
+/// Answers whatever the test sets, so a test can say "airplane mode" or
+/// "back online" without a real network to take away. Defaults to online, the
+/// same as a device with a normal connection, so a test that says nothing
+/// about it behaves like every test written before this mock existed.
+@MainActor
+private final class MockConnectivity: ConnectivityChecking, @unchecked Sendable {
+    var isOnlineValue = true
+
+    func isOnline() async -> Bool { isOnlineValue }
 }
 
 /// Whether the app is on screen. A test that locks the phone partway through
@@ -113,6 +130,9 @@ struct CaptureViewModelTests {
     /// - Parameters:
     ///   - organizer: a `MockOrganizer` for a tidy that answers, a
     ///     `SlowOrganizer` for one a test wants to catch mid-wait.
+    ///   - connectivity: whether the phone is online. Defaults to online, so
+    ///     a test that says nothing about it records the way every test
+    ///     before this mock existed did.
     ///   - drafts: writes nowhere unless a test asks for a real slot. A test
     ///     that says nothing about drafts must not touch the one on the
     ///     machine running it.
@@ -123,6 +143,7 @@ struct CaptureViewModelTests {
         recorder: MockRecorder,
         organizer: any NoteOrganizing & VoiceOrganizing,
         store: EntitlementStore,
+        connectivity: MockConnectivity = MockConnectivity(),
         silence: SilenceDetector.Configuration = .default,
         drafts: DraftStore = DraftStore(defaults: nil),
         foreground: ForegroundFlag = ForegroundFlag(true)
@@ -132,6 +153,7 @@ struct CaptureViewModelTests {
             log: makeLog(),
             locale: Locale(identifier: "en_US"),
             recorder: recorder,
+            connectivity: connectivity,
             silence: silence,
             drafts: drafts,
             isAppInForeground: { foreground.isInForeground }
@@ -373,6 +395,118 @@ struct CaptureViewModelTests {
         #expect(viewModel.state == .idle)
         #expect(await organizer.receivedRecordings.count == 1)
         #expect(FileManager.default.fileExists(atPath: recording.url.path) == false)
+    }
+
+    // MARK: - Connectivity
+
+    @Test("airplane mode stops the microphone before it starts")
+    func offlineBlocksTheMicrophone() async throws {
+        let defaults = try EphemeralDefaults()
+        let recorder = MockRecorder()
+        let connectivity = MockConnectivity()
+        connectivity.isOnlineValue = false
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults),
+            connectivity: connectivity
+        )
+
+        viewModel.startCapture()
+        try await waitUntil("the offline screen") { viewModel.state == .unavailable(.networkUnavailable) }
+
+        #expect(recorder.startCount == 0)
+        #expect(recorder.permissionRequests == 0)
+    }
+
+    @Test("a widget tap while offline says so instead of recording")
+    func quickCaptureOfflineShowsTheOfflineScreen() async throws {
+        let defaults = try EphemeralDefaults()
+        let recorder = MockRecorder()
+        let connectivity = MockConnectivity()
+        connectivity.isOnlineValue = false
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults),
+            connectivity: connectivity
+        )
+
+        viewModel.startQuickCapture()
+        try await waitUntil("the offline screen") { viewModel.state == .unavailable(.networkUnavailable) }
+
+        #expect(recorder.startCount == 0)
+        #expect(recorder.permissionRequests == 0)
+    }
+
+    @Test("Try Again while still offline stays on the screen")
+    func retryWhileStillOfflineStaysOnTheScreen() async throws {
+        let defaults = try EphemeralDefaults()
+        let recorder = MockRecorder()
+        let connectivity = MockConnectivity()
+        connectivity.isOnlineValue = false
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults),
+            connectivity: connectivity
+        )
+
+        viewModel.startCapture()
+        try await waitUntil("the offline screen") { viewModel.state == .unavailable(.networkUnavailable) }
+
+        viewModel.retry()
+        try await waitUntil("the offline screen again") { viewModel.state == .unavailable(.networkUnavailable) }
+
+        #expect(recorder.startCount == 0)
+    }
+
+    @Test("Try Again records once the connection is back")
+    func retryRecordsOnceOnline() async throws {
+        let defaults = try EphemeralDefaults()
+        let recorder = MockRecorder()
+        let connectivity = MockConnectivity()
+        connectivity.isOnlineValue = false
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults),
+            connectivity: connectivity
+        )
+
+        viewModel.startCapture()
+        try await waitUntil("the offline screen") { viewModel.state == .unavailable(.networkUnavailable) }
+
+        connectivity.isOnlineValue = true
+        viewModel.retry()
+
+        try await waitUntil("the recording to start") { recorder.isRecording }
+    }
+
+    @Test("Try Again offline keeps the draft")
+    func retryOfflineKeepsTheDraft() async throws {
+        let defaults = try EphemeralDefaults()
+        let drafts = DraftStore(defaults: defaults.defaults)
+        drafts.save(note)
+        let recorder = MockRecorder()
+        let connectivity = MockConnectivity()
+        connectivity.isOnlineValue = false
+        let viewModel = makeViewModel(
+            recorder: recorder,
+            organizer: MockOrganizer(result: note),
+            store: makeStore(defaults),
+            connectivity: connectivity,
+            drafts: drafts
+        )
+        viewModel.restoreDraftIfAvailable()
+
+        viewModel.startQuickCapture()
+        try await waitUntil("the offline screen") { viewModel.state == .unavailable(.networkUnavailable) }
+
+        viewModel.retry()
+        try await waitUntil("the offline screen again") { viewModel.state == .unavailable(.networkUnavailable) }
+
+        #expect(drafts.load() != nil)
     }
 
     // MARK: - Walls

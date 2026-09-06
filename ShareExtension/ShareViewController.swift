@@ -28,6 +28,10 @@ final class ShareViewController: UIViewController {
         hosting.view.frame = view.bounds
         hosting.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         view.addSubview(hosting.view)
+        // Covers the UIKit chrome the SwiftUI `.tint` in `ShareRootView`
+        // doesn't reach — the activity sheet, alerts. A missing asset makes
+        // this a harmless no-op; the SwiftUI side is the one that matters.
+        hosting.view.tintColor = UIColor(named: "AccentColor")
         hosting.didMove(toParent: self)
     }
 

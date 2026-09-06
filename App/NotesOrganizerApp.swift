@@ -32,6 +32,7 @@ struct NotesOrganizerApp: App {
             purchases.configure()
         }
         AudioRecorderService.sweepStaleRecordings()
+        ConnectivityMonitor.shared.start()
     }
 
     private static var isRunningTests: Bool {

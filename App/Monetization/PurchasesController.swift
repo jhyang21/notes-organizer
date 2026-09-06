@@ -40,6 +40,22 @@ final class PurchasesController {
         }
     }
 
+    /// A purchase or a restore the store itself refused, in the paywall's
+    /// terms — offline, mid-purchase, is the common case, but the copy says
+    /// nothing about why, same rule as `RestoreOutcome`.
+    enum StoreFailure: Equatable {
+        case purchase, restore
+
+        var title: String {
+            switch self {
+            case .purchase: "Couldn't complete the purchase"
+            case .restore: RestoreOutcome.failed.title
+            }
+        }
+
+        var message: String { RestoreOutcome.failed.message }
+    }
+
     /// A restore is in flight. Read by whichever screen offered the button.
     private(set) var isRestoring = false
 
@@ -103,6 +119,12 @@ final class PurchasesController {
             log.recordEvent(source: .app, message: "Restore failed: \(error.localizedDescription)")
             return .failed
         }
+    }
+
+    /// The paywall handing back what the store told it.
+    func report(_ failure: StoreFailure, error: any Error) -> StoreFailure {
+        log.recordEvent(source: .app, message: "\(failure) failed: \(error.localizedDescription)")
+        return failure
     }
 }
 
