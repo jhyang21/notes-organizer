@@ -168,7 +168,7 @@ struct PaywallScreen: View {
             BenefitRow(
                 symbol: "infinity",
                 title: "Unlimited tidies",
-                detail: "No monthly cap. The free plan stops at \(PlanState.freeMonthlyLimit) a month; Pro keeps going."
+                detail: "The free plan stops at \(PlanState.freeMonthlyLimit) a month; Pro keeps going."
             )
             BenefitRow(
                 symbol: "mic",
