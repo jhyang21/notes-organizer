@@ -76,7 +76,7 @@ WHAT IT IS GOOD FOR
 
 PRIVACY
 
-Every tidy runs on our servers. Your recording, or the text you share in, goes over an encrypted connection to be turned into text and organized, and it isn't kept once the note comes back. The app explains what it sends before the first tidy, and nothing is sent until you agree.
+Every tidy runs on our servers. Your recording, or the text you share in, goes over an encrypted connection to be turned into text and organized, and it isn't kept once the note comes back. The app explains what it sends before the first tidy, and sends nothing until you agree.
 
 There is no account, no sign-up, and no tracking. Nothing you save is stored by us - finished notes go where you send them.
 
