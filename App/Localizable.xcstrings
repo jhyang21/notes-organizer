@@ -1,6 +1,27 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ per month" : {
+
+    },
+    "%@ per year" : {
+
+    },
+    "%@, renews automatically. Cancel anytime in Settings." : {
+
+    },
+    "%@/mo" : {
+
+    },
+    "%@/month" : {
+
+    },
+    "%@/year" : {
+
+    },
+    "%lld-day free trial, then %@. Renews automatically. Cancel anytime in Settings." : {
+
+    },
     "^[%lld tidies](inflect: true) a month on the free plan." : {
 
     },
@@ -10,19 +31,34 @@
     "A recording is already running." : {
 
     },
+    "Best value" : {
+
+    },
     "Cancel" : {
 
     },
     "Choose TidyNote. Your note gets organized right there — save the clean copy without leaving Notes." : {
 
     },
+    "Close" : {
+
+    },
     "Continue" : {
+
+    },
+    "Couldn't load the plans" : {
 
     },
     "Diagnostics" : {
 
     },
     "Done" : {
+
+    },
+    "Every fact, name, number, and date you said stays in the note." : {
+
+    },
+    "Every ramble and every messy note comes back organized, as often as you need." : {
 
     },
     "Free plan" : {
@@ -40,6 +76,9 @@
     "In Apple Notes, open the messy note and tap Share." : {
 
     },
+    "Loading plans" : {
+
+    },
     "Long recordings can take a couple of minutes." : {
 
     },
@@ -49,13 +88,22 @@
     "Microphone access needed" : {
 
     },
+    "Monthly" : {
+
+    },
     "New Note" : {
 
     },
     "New tidy in ${applicationName}" : {
 
     },
+    "No monthly cap. The free plan stops at %lld a month; Pro keeps going." : {
+
+    },
     "Note ready." : {
+
+    },
+    "Nothing kept" : {
 
     },
     "Nothing to tidy" : {
@@ -70,6 +118,9 @@
     "Opens TidyNote and starts recording straight away." : {
 
     },
+    "Organized, never summarized" : {
+
+    },
     "Plan" : {
 
     },
@@ -77,6 +128,12 @@
 
     },
     "Privacy Policy" : {
+
+    },
+    "Purchasing" : {
+
+    },
+    "Record a ramble, or share a messy note in from Apple Notes or any app." : {
 
     },
     "Recording" : {
@@ -112,6 +169,9 @@
     "Restoring purchases" : {
 
     },
+    "Save %@" : {
+
+    },
     "Send" : {
 
     },
@@ -119,6 +179,9 @@
 
     },
     "Settings" : {
+
+    },
+    "Start %lld-Day Free Trial" : {
 
     },
     "Start a Tidy" : {
@@ -137,6 +200,9 @@
 
     },
     "Stop" : {
+
+    },
+    "Subscribe for %@" : {
 
     },
     "Tap to start talking. We'll turn it into an organized note." : {
@@ -160,6 +226,9 @@
     "Tidy an Existing Note" : {
 
     },
+    "Tidy as much as you like" : {
+
+    },
     "TidyNote" : {
 
     },
@@ -167,6 +236,9 @@
 
     },
     "TidyNote Pro" : {
+
+    },
+    "TidyNote Pro needs a connection to show prices and take a payment. Try again when you're back online." : {
 
     },
     "TidyNote records your voice, sends the recording over an encrypted connection to our servers, turns it into text, and organizes it into a note. We don't keep your recordings or your notes." : {
@@ -178,10 +250,31 @@
     "Turning it into a note…" : {
 
     },
+    "Unlimited tidies" : {
+
+    },
+    "Voice or shared notes" : {
+
+    },
+    "We couldn't reach the App Store for prices. Check your connection and try again." : {
+
+    },
     "We didn't hear anything. Speak for a few seconds and try again." : {
 
     },
     "We'll transcribe when you stop." : {
+
+    },
+    "Yearly" : {
+
+    },
+    "You're offline" : {
+
+    },
+    "You've used this month's free tidies. Go Pro and the note you were tidying picks up where it left off." : {
+
+    },
+    "Your recording and your note aren't stored once the note comes back." : {
 
     },
     "Your recording and your note's text are sent over an encrypted connection so they can be transcribed and organized. We don't keep either one once the note comes back." : {

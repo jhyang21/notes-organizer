@@ -10,7 +10,10 @@ text to a Supabase edge function (`supabase/functions/tidynote_organize`),
 which calls OpenAI for transcription and organizing and returns the note.
 The backend shares the `relora-prod` Supabase project, with every object
 prefixed `tidynote_`. There are no accounts — installs are identified by an
-anonymous `tidy:<UUID>` — and RevenueCat carries subscription status.
+anonymous `tidy:<UUID>` — and RevenueCat carries subscription status. The
+paywall is native SwiftUI in `App/Monetization/PaywallScreen.swift`;
+RevenueCat supplies offerings, prices, and purchases through
+`PurchaseService`, never UI, and `RevenueCatUI` is not a dependency.
 
 The architecture is the repo layout: `App/` (the app), `ShareExtension/`
 (the appex), `Widgets/` (the widget and the Control Center control, both

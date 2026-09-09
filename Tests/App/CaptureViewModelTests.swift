@@ -64,17 +64,6 @@ private final class MockRecorder: AudioRecording {
     }
 }
 
-/// Answers whatever the test sets, so a test can say "airplane mode" or
-/// "back online" without a real network to take away. Defaults to online, the
-/// same as a device with a normal connection, so a test that says nothing
-/// about it behaves like every test written before this mock existed.
-@MainActor
-private final class MockConnectivity: ConnectivityChecking, @unchecked Sendable {
-    var isOnlineValue = true
-
-    func isOnline() async -> Bool { isOnlineValue }
-}
-
 /// Whether the app is on screen. A test that locks the phone partway through
 /// flips this rather than building a second view model.
 @MainActor

@@ -40,24 +40,32 @@ final class PurchasesController {
         }
     }
 
-    /// A purchase or a restore the store itself refused, in the paywall's
-    /// terms — offline, mid-purchase, is the common case, but the copy says
-    /// nothing about why, same rule as `RestoreOutcome`.
-    enum StoreFailure: Equatable {
-        case purchase, restore
+    /// What a purchase came to. A cancel is its own case because it is not a
+    /// failure: the user closed the store's sheet, and saying anything about
+    /// that would be the app talking over them.
+    ///
+    /// The title and the message describe the failed case — the only one the
+    /// paywall puts in an alert. They say nothing about why, the same rule
+    /// `RestoreOutcome` follows, and the message is that type's word for
+    /// word: a store the app couldn't reach reads the same whichever button
+    /// the user pressed.
+    enum PurchaseOutcome: Equatable {
+        case purchased(isPro: Bool)
+        case cancelled
+        case failed
 
-        var title: String {
-            switch self {
-            case .purchase: "Couldn't complete the purchase"
-            case .restore: RestoreOutcome.failed.title
-            }
-        }
+        var title: String { "Couldn't complete the purchase" }
 
         var message: String { RestoreOutcome.failed.message }
     }
 
     /// A restore is in flight. Read by whichever screen offered the button.
     private(set) var isRestoring = false
+
+    /// A purchase is in flight — the store's own sheet is up, or the receipt
+    /// is being checked. The paywall spins its button on this and refuses to
+    /// be swiped away.
+    private(set) var isPurchasing = false
 
     @ObservationIgnored private let service: any PurchaseService
     @ObservationIgnored private let store: EntitlementStore
@@ -97,8 +105,8 @@ final class PurchasesController {
         })
     }
 
-    /// The one write. Called by the stream and by the paywall, whose own sheet
-    /// does the buying and hands back what it saw.
+    /// The one write. Called by the stream, and by the purchase and restore
+    /// below once the store has answered.
     func recordEntitlement(isPro: Bool) {
         store.recordIsPro(isPro)
         plan.refresh()
@@ -121,10 +129,41 @@ final class PurchasesController {
         }
     }
 
-    /// The paywall handing back what the store told it.
-    func report(_ failure: StoreFailure, error: any Error) -> StoreFailure {
-        log.recordEvent(source: .app, message: "\(failure) failed: \(error.localizedDescription)")
-        return failure
+    // MARK: - Buying
+
+    /// What the store is selling right now. Handed straight through: the
+    /// prices are the store's to state, and this object's job is only to be
+    /// the one door to it.
+    func loadOffer() async throws -> PaywallOffer? {
+        try await service.currentOffer()
+    }
+
+    /// Which plans this Apple Account can still start a free trial on.
+    func trialEligibility(for productIDs: [String]) async -> Set<String> {
+        await service.trialEligibility(for: productIDs)
+    }
+
+    /// Buys a plan and writes down what the store said about it, so a purchase
+    /// reaches the App Group the same way a restore does rather than waiting
+    /// on the entitlement stream to come around.
+    func purchase(planID: String) async -> PurchaseOutcome {
+        isPurchasing = true
+        defer { isPurchasing = false }
+
+        do {
+            switch try await service.purchase(planID: planID) {
+            case .purchased(let isPro):
+                recordEntitlement(isPro: isPro)
+                return .purchased(isPro: isPro)
+            case .cancelled:
+                // Nothing happened and nothing is wrong. Not even a log line:
+                // a closed sheet is not an event worth reading back.
+                return .cancelled
+            }
+        } catch {
+            log.recordEvent(source: .app, message: "Purchase failed: \(error.localizedDescription)")
+            return .failed
+        }
     }
 }
 
