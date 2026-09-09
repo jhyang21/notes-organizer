@@ -141,6 +141,7 @@ struct SettingsScreen: View {
 
             Link("Privacy Policy", destination: ExternalLinks.privacyPolicy)
             Link("Terms of Use", destination: ExternalLinks.terms)
+            Link("Contact Support", destination: ExternalLinks.support)
         }
     }
 

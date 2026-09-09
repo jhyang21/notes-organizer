@@ -28,7 +28,7 @@ struct FirstRunScreen: View {
             Link("Privacy Policy", destination: ExternalLinks.privacyPolicy)
                 .font(.footnote)
 
-            Button("Continue", action: onContinue)
+            Button("Agree and Continue", action: onContinue)
                 .buttonStyle(.borderedProminent)
         }
         .padding()

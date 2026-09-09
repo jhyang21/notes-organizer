@@ -1,4 +1,4 @@
-# App Store listing — TidyNote 1.0.0
+# App Store listing — TidyNote 1.0.6
 
 The record of what is set in App Store Connect for app `6799307936`
 (`com.immform.notesorganizer`, platform iOS). Edit here first, then push to ASC
@@ -76,7 +76,7 @@ WHAT IT IS GOOD FOR
 
 PRIVACY
 
-Every tidy runs on our servers. Your recording, or the text you share in, goes over an encrypted connection to be turned into text and organized, and it isn't kept once the note comes back. The app asks before it sends anything the first time, and you can say no.
+Every tidy runs on our servers. Your recording, or the text you share in, goes over an encrypted connection to be turned into text and organized, and it isn't kept once the note comes back. The app explains what it sends before the first tidy, and nothing is sent until you agree.
 
 There is no account, no sign-up, and no tracking. Nothing you save is stored by us - finished notes go where you send them.
 
@@ -99,36 +99,43 @@ appear in the description.
 ## App Review notes
 
 ```
-NO ACCOUNT - NOTHING TO DEMO-LOGIN
-TidyNote has no sign-up, login, or password. Please leave the demo account fields empty. On first launch the app makes a random anonymous ID ("tidy:<UUID>"), used only to count tidies and check subscription status. It is not tied to a name, email, device ID, or ad ID.
+NO ACCOUNT, NOTHING TO SIGN IN TO
+TidyNote has no sign-up, login, or password; the demo fields are empty on purpose. On first launch the app creates a random anonymous ID ("tidy:<UUID>") used only to count tidies and check subscription status. It is not tied to a name, email, device ID, or ad ID. iPhone only, English only.
+
+FIRST-RUN SCREEN
+Before anything is sent, one screen explains that recordings and shared text go over HTTPS to our servers, are transcribed and organized by an AI model, and are not kept. The user taps "Agree and Continue". The Privacy Policy is linked on that screen, in Settings, and on the paywall.
 
 EVERY TIDY IS A SERVER CALL
-Nothing is organized offline. The app records audio, uploads it over HTTPS; our provider transcribes and organizes it, and the note comes back to the phone. Shared text takes the same route without transcription. We store neither the recording nor the text. The free plan's 5-tidies-a-month cap is enforced server-side: the 6th tidy gets HTTP 429, and the app shows the "You've used this month's tidies" screen with the Pro upsell. The review device needs a network connection.
+Nothing is organized offline; the review device needs a network connection. The app records audio, uploads it, our provider transcribes and organizes it, and the note comes back. Shared text takes the same route without transcription. Neither the recording nor the text is stored.
+
+LIMITS YOU MAY HIT WHILE TESTING
+- Free plan: 5 tidies a month, counted server-side. The 6th shows "You've used this month's tidies" with the Pro offer. Deleting and reinstalling the app resets the count.
+- Rate limit: 6 tidies a minute per install. A 7th inside the same minute shows a "try again" screen; wait one minute.
+- After a delete-and-reinstall, the very first tidy may fail once with "The tidy service hit a snag" while the device re-registers its App Attest key. Tap Try Again; it succeeds.
 
 HOW TO TEST A SUBSCRIPTION IN SANDBOX
-1. Tap the gear icon (top right) to reach Settings.
-2. Tap "Go Pro" to open the paywall. Yearly is preselected with live App Store prices. The button reads "Start 7-Day Free Trial" if the sandbox account hasn't used the trial, else "Subscribe for $39.99/year" (or the monthly price). Confirm the purchase. Settings now reads "TidyNote Pro" with "Tidies are unlimited."
-3. Record a short voice note (or share text in, see below) and let it finish.
-4. "Restore Purchases" re-applies the entitlement; "Manage Subscription" opens the system sheet in place.
-Without purchasing, Settings and the capture screen show tidies left this month, dropping by one per tidy.
-
-DIAGNOSTICS IS HIDDEN
-Settings ends with a version line; tap it five times to reveal a Diagnostics row - an on-device log for TestFlight testers. It never leaves the device and isn't part of the product.
+1. Tap the gear icon (top right) to open Settings.
+2. Tap "Go Pro". Yearly is preselected with live App Store prices. The button reads "Start 7-Day Free Trial" if the sandbox account has not used the trial, else "Subscribe for $39.99/year" (or the monthly price). The line under it states the trial, price, auto-renewal, and how to cancel. Confirm the purchase; Settings then reads "TidyNote Pro".
+3. "Restore Purchases" re-applies the entitlement. "Manage Subscription" opens the system sheet.
+Without purchasing, Settings and the capture screen show tidies left this month.
 
 SHARE EXTENSION
-TidyNote appears in the iOS share sheet for text. Open the app once first - a one-time screen explains what gets sent and asks you to agree; the extension works only after that. Share a note from Apple Notes (switch its share sheet from Collaborate to Send Copy) or selected text from any app, pick TidyNote, and the organized version appears. It never writes back to the shared note: "Save to Apple Notes" saves the result as a new note. There is no purchase UI - StoreKit doesn't work in a share extension - so a spent quota says "Open TidyNote to go Pro", or offers a button that opens the app on hosts that allow it. The home screen has a "Tidy an Existing Note" button that teaches this flow, since Apple Notes has no read API and the share sheet is the only way in.
+TidyNote appears in the share sheet for text. Open the app once first; the extension works only after the first-run screen. Share a note from Apple Notes (switch its share sheet from Collaborate to Send Copy) or selected text from any app, pick TidyNote, and the organized version appears. It never edits the source note: "Save to Apple Notes" creates a new note. StoreKit does not run in extensions, so a spent quota there says "Open TidyNote to go Pro".
 
-WIDGET, CONTROL, AND SIRI SHORTCUT
-All three just open the app with "tidynote://record", which starts a recording once the app is on screen; none record anything or touch data on their own. To test: add the "Start a Tidy" widget to the Home or Lock Screen and tap it; on iOS 18, add the "Start a Tidy" control in Control Center; or say "Start a tidy in TidyNote" to Siri. A tap during a recording or upload is ignored on purpose; the app just comes to the front.
+WIDGET, CONTROL CENTER, SIRI
+All three open the app with "tidynote://record", which starts a recording once the app is on screen. None record or touch data on their own. Add the "Start a Tidy" widget, add the Control Center control on iOS 18+, or say "Start a tidy in TidyNote". A tap during a recording is ignored; the app just comes to the front.
 
-MICROPHONE PERMISSION
-Requested only when the user taps record. The recording IS uploaded: it goes over HTTPS to our provider, which transcribes and organizes it. Neither we nor the app keep it, and the provider holds it only for abuse monitoring, about 30 days.
+MICROPHONE
+Requested only when the user taps Record. The recording is uploaded over HTTPS, transcribed and organized, and not kept by us; the provider holds it for abuse monitoring only, about 30 days.
 
 BACKGROUND AUDIO MODE
-Declared for one reason: to keep recording when the user locks the phone or switches apps mid-sentence. Nothing records unless the user taps the microphone first; a recording stops after ten seconds of silence or five minutes. There is no playback, no listening at launch, and no background activity once recording ends. Nothing uploads in the background - a recording that ends there waits until the user returns and taps Send. To see it: tap record, lock the phone, keep talking, then unlock - what was said while locked is in the recording.
+Declared so a recording the user started keeps going if they lock the phone or switch apps mid-sentence. Nothing records unless the user tapped Record; recording stops after 10 seconds of silence or 5 minutes. No playback, no background upload. To see it: tap Record, lock the phone, keep talking, unlock.
+
+DIAGNOSTICS IS HIDDEN
+Settings ends with a version line; tap it five times to reveal an on-device log for TestFlight testers. It never leaves the device.
 
 PRIVACY POLICY
-https://jhyang21.github.io/notes-organizer/privacy.html names our sub-processors and retention periods for audio and text. The app's own copy avoids vendor names; the policy does not.
+https://jhyang21.github.io/notes-organizer/privacy.html names our sub-processors and retention periods. Support: Settings → Contact Support.
 ```
 
 ## App Privacy (nutrition labels)
@@ -171,7 +178,7 @@ text and the review screenshots were last pushed on 2026-09-03.
 
 | Object | ID | State |
 |---|---|---|
-| App Store version | `74f6eb9d-c264-488b-9576-5dd243cf38c4` | 1.0.3 (renamed 2026-09-05), build 30 attached — rename to 1.0.5 and attach the 1.0.5 build before Add for Review |
+| App Store version | `74f6eb9d-c264-488b-9576-5dd243cf38c4` | 1.0.5 build 32 attached — rename to 1.0.6 and attach the 1.0.6 build before Add for Review |
 | en-US version localization | `1606cd73-b50b-4bbe-a43e-5c86f8dd58cc` | description, keywords, promo text, support and marketing URLs |
 | en-US app info localization | `2aec22f3-5190-40a8-9837-383aa308fbd0` | name, subtitle, privacy policy URL |
 | App Review detail | `eb9ff962-5d41-4c12-8ed1-d3c70a7b7450` | Andrew Yang, demo account not required |

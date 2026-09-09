@@ -6,4 +6,7 @@ import Foundation
 enum ExternalLinks {
     static let privacyPolicy = URL(string: "https://jhyang21.github.io/notes-organizer/privacy.html")!
     static let terms = URL(string: "https://jhyang21.github.io/notes-organizer/terms.html")!
+
+    /// The support address, pre-addressed so nobody has to copy it out of a page.
+    static let support = URL(string: "mailto:junhyeok.andrew.yang@gmail.com?subject=TidyNote%20support")!
 }

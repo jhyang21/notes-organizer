@@ -31,6 +31,9 @@
     "A recording is already running." : {
 
     },
+    "Agree and Continue" : {
+
+    },
     "Best value" : {
 
     },
@@ -43,7 +46,7 @@
     "Close" : {
 
     },
-    "Continue" : {
+    "Contact Support" : {
 
     },
     "Couldn't load the plans" : {
@@ -95,9 +98,6 @@
 
     },
     "New tidy in ${applicationName}" : {
-
-    },
-    "No monthly cap. The free plan stops at %lld a month; Pro keeps going." : {
 
     },
     "Note ready." : {
@@ -209,6 +209,9 @@
 
     },
     "Terms of Use" : {
+
+    },
+    "The free plan stops at %lld a month; Pro keeps going." : {
 
     },
     "The microphone didn't start. Try again." : {
