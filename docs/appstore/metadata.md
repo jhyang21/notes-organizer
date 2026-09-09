@@ -174,11 +174,11 @@ with `python scripts/asc_metadata.py review-screenshots monthly.png annual.png`.
 ## What is already in App Store Connect
 
 App `6799307936`, all written through the API on 2026-08-08; the listing
-text and the review screenshots were last pushed on 2026-09-03.
+text was last pushed on 2026-09-09; the review screenshots on 2026-09-03.
 
 | Object | ID | State |
 |---|---|---|
-| App Store version | `74f6eb9d-c264-488b-9576-5dd243cf38c4` | 1.0.5 build 32 attached — rename to 1.0.6 and attach the 1.0.6 build before Add for Review |
+| App Store version | `74f6eb9d-c264-488b-9576-5dd243cf38c4` | 1.0.6, build 33 attached (2026-09-09) |
 | en-US version localization | `1606cd73-b50b-4bbe-a43e-5c86f8dd58cc` | description, keywords, promo text, support and marketing URLs |
 | en-US app info localization | `2aec22f3-5190-40a8-9837-383aa308fbd0` | name, subtitle, privacy policy URL |
 | App Review detail | `eb9ff962-5d41-4c12-8ed1-d3c70a7b7450` | Andrew Yang, demo account not required |
