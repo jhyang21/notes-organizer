@@ -9,8 +9,13 @@ import UIKit
 struct CaptureScreen: View {
     @State private var viewModel: CaptureViewModel
     @State private var isShowingPaywall = false
+    /// Which way in the paywall was reached, which changes one line of its
+    /// copy. Kept beside the flag rather than in it: a sheet driven by an
+    /// `item` would rebuild its view model every time this changed.
+    @State private var paywallOrigin: PaywallViewModel.Origin = .general
     @State private var isShowingHowToTidy = false
     @Environment(PlanModel.self) private var plan
+    @Environment(PurchasesController.self) private var purchases
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -60,7 +65,7 @@ struct CaptureScreen: View {
                     UnavailableView(
                         failure: failure,
                         onRetry: { viewModel.retry() },
-                        onUpgrade: { isShowingPaywall = true }
+                        onUpgrade: { showPaywall(from: .quotaWall) }
                     )
                 }
             }
@@ -82,7 +87,7 @@ struct CaptureScreen: View {
             }
         }
         .sheet(isPresented: $isShowingPaywall, onDismiss: { viewModel.refreshPlan() }) {
-            PaywallScreen()
+            PaywallScreen(viewModel: PaywallViewModel(purchases: purchases, origin: paywallOrigin))
         }
         .sheet(isPresented: $isShowingHowToTidy) { HowToTidyScreen() }
         // Full screen rather than a sheet: there is nothing behind it to use
@@ -150,9 +155,15 @@ struct CaptureScreen: View {
             // Nothing opens over the first-run screen, which is a question
             // still waiting for its answer.
             if !viewModel.isShowingFirstRun {
-                isShowingPaywall = true
+                showPaywall(from: .general)
             }
         }
+    }
+
+    /// A link and a spent month both end up here; only the copy differs.
+    private func showPaywall(from origin: PaywallViewModel.Origin) {
+        paywallOrigin = origin
+        isShowingPaywall = true
     }
 
     // MARK: - Dynamic Type

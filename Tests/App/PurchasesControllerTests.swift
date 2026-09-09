@@ -3,47 +3,6 @@ import NotesOrganizerKit
 import Testing
 @testable import NotesOrganizer
 
-/// An App Store that does what the test tells it to. The stream is built up
-/// front, so a test can send an update without racing the controller's
-/// subscription — an `AsyncStream` holds what it was given until someone
-/// iterates it.
-@MainActor
-private final class MockPurchaseService: PurchaseService {
-    var isConfigured = false
-    var restoreResult: Result<Bool, any Error> = .success(false)
-
-    private(set) var configuredAppUserID: String?
-
-    private let updates: AsyncStream<Bool>
-    private let continuation: AsyncStream<Bool>.Continuation
-
-    init() {
-        let made = AsyncStream<Bool>.makeStream()
-        updates = made.stream
-        continuation = made.continuation
-    }
-
-    func configure(appUserID: String) {
-        isConfigured = true
-        configuredAppUserID = appUserID
-    }
-
-    func entitlementUpdates() -> AsyncStream<Bool> { updates }
-
-    func restore() async throws -> Bool { try restoreResult.get() }
-
-    /// One word from the store about the customer, as the SDK's stream would
-    /// deliver it.
-    func send(isPro: Bool) {
-        continuation.yield(isPro)
-    }
-}
-
-/// A restore that failed for a reason only a log should ever repeat.
-private struct StoreUnreachable: LocalizedError {
-    var errorDescription: String? { "The App Store returned 503 (service unavailable)" }
-}
-
 @MainActor
 @Suite("PurchasesController")
 struct PurchasesControllerTests {
@@ -168,27 +127,59 @@ struct PurchasesControllerTests {
         #expect(rig.controller.isRestoring == false)
     }
 
-    // MARK: - Store failures
+    // MARK: - Buying
 
-    @Test("a failed purchase gets fixed copy, and the real error goes to the log")
-    func reportPurchaseFailure() throws {
+    @Test("a purchase the store completed turns Pro on everywhere")
+    func purchaseRecordsPro() async throws {
         let defaults = try EphemeralDefaults()
         let rig = makeRig(defaults)
+        rig.service.purchaseResult = .success(.purchased(isPro: true))
 
-        let failure = rig.controller.report(.purchase, error: StoreUnreachable())
+        let outcome = await rig.controller.purchase(planID: annualPlanID)
 
-        #expect(failure == .purchase)
-        #expect(failure.message == "Check your connection and try again.")
-        #expect(rig.log.events().contains { $0.message.contains("503") })
+        #expect(outcome == .purchased(isPro: true))
+        #expect(rig.service.purchasedPlanIDs == [annualPlanID])
+        #expect(rig.store.isPro())
+        #expect(rig.plan.isPro)
+        #expect(rig.controller.isPurchasing == false)
     }
 
-    @Test("a failed restore reads the same on the paywall as it does in Settings")
-    func reportRestoreFailureMatchesSettings() throws {
+    /// A closed store sheet is the user changing their mind, which is neither
+    /// a failure to report nor an event to keep.
+    @Test("a cancelled purchase changes nothing and logs nothing")
+    func purchaseCancelled() async throws {
         let defaults = try EphemeralDefaults()
         let rig = makeRig(defaults)
+        rig.service.purchaseResult = .success(.cancelled)
 
-        let failure = rig.controller.report(.restore, error: StoreUnreachable())
+        let outcome = await rig.controller.purchase(planID: annualPlanID)
 
-        #expect(failure.title == PurchasesController.RestoreOutcome.failed.title)
+        #expect(outcome == .cancelled)
+        #expect(rig.store.isPro() == false)
+        #expect(rig.log.events().isEmpty)
+        #expect(rig.controller.isPurchasing == false)
+    }
+
+    @Test("a failed purchase keeps the real error out of the alert")
+    func purchaseFailure() async throws {
+        let defaults = try EphemeralDefaults()
+        let rig = makeRig(defaults)
+        rig.service.purchaseResult = .failure(StoreUnreachable())
+
+        let outcome = await rig.controller.purchase(planID: annualPlanID)
+
+        #expect(outcome == .failed)
+        #expect(outcome.title == "Couldn't complete the purchase")
+        #expect(rig.log.events().contains { $0.message.contains("503") })
+        #expect(rig.store.isPro() == false)
+        #expect(rig.controller.isPurchasing == false)
+    }
+
+    @Test("a store the app couldn't reach reads the same whichever button was pressed")
+    func purchaseFailureMatchesRestore() {
+        #expect(
+            PurchasesController.PurchaseOutcome.failed.message
+                == PurchasesController.RestoreOutcome.failed.message
+        )
     }
 }

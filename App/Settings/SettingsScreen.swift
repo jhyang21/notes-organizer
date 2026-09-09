@@ -43,7 +43,7 @@ struct SettingsScreen: View {
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $isShowingPaywall, onDismiss: { plan.refresh() }) {
-            PaywallScreen()
+            PaywallScreen(viewModel: PaywallViewModel(purchases: purchases, origin: .general))
         }
         // Apple's own sheet, in the app, instead of throwing the user out to
         // Safari and asking them to find the subscription again.

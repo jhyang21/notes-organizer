@@ -1,6 +1,7 @@
 import Foundation
 import NotesOrganizerKit
 import Testing
+@testable import NotesOrganizer
 
 /// Stands in for the App Group suite, so nothing a test logs reaches the
 /// simulator's shared storage. A lock rather than an actor because
@@ -75,6 +76,143 @@ func currentMonthKey() -> String {
     calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
     let parts = calendar.dateComponents([.year, .month], from: Date())
     return String(format: "%04d-%02d", parts.year ?? 0, parts.month ?? 0)
+}
+
+// MARK: - The store
+
+/// An App Store that does what the test tells it to. The stream is built up
+/// front, so a test can send an update without racing the controller's
+/// subscription — an `AsyncStream` holds what it was given until someone
+/// iterates it.
+///
+/// Shared by the controller's tests and the paywall's, which is the point:
+/// one mock means the two can't disagree about what the store does.
+@MainActor
+final class MockPurchaseService: PurchaseService {
+    var isConfigured = false
+    var restoreResult: Result<Bool, any Error> = .success(false)
+    var offerResult: Result<PaywallOffer?, any Error> = .success(nil)
+    /// Which products this Apple Account may still start a trial on. Answered
+    /// as the real service does — only the ones actually asked about.
+    var eligiblePlanIDs: Set<String> = []
+    var purchaseResult: Result<PurchaseResult, any Error> = .success(.purchased(isPro: true))
+
+    private(set) var configuredAppUserID: String?
+    /// Every plan a purchase was attempted for, in order, whether or not the
+    /// store then said yes.
+    private(set) var purchasedPlanIDs: [String] = []
+
+    private let updates: AsyncStream<Bool>
+    private let continuation: AsyncStream<Bool>.Continuation
+
+    init() {
+        let made = AsyncStream<Bool>.makeStream()
+        updates = made.stream
+        continuation = made.continuation
+    }
+
+    func configure(appUserID: String) {
+        isConfigured = true
+        configuredAppUserID = appUserID
+    }
+
+    func entitlementUpdates() -> AsyncStream<Bool> { updates }
+
+    func restore() async throws -> Bool { try restoreResult.get() }
+
+    func currentOffer() async throws -> PaywallOffer? { try offerResult.get() }
+
+    func trialEligibility(for productIDs: [String]) async -> Set<String> {
+        eligiblePlanIDs.intersection(productIDs)
+    }
+
+    func purchase(planID: String) async throws -> PurchaseResult {
+        purchasedPlanIDs.append(planID)
+        return try purchaseResult.get()
+    }
+
+    /// One word from the store about the customer, as the SDK's stream would
+    /// deliver it.
+    func send(isPro: Bool) {
+        continuation.yield(isPro)
+    }
+}
+
+/// A store call that failed for a reason only a log should ever repeat.
+struct StoreUnreachable: LocalizedError {
+    var errorDescription: String? { "The App Store returned 503 (service unavailable)" }
+}
+
+/// Answers whatever the test sets, so a test can say "airplane mode" or
+/// "back online" without a real network to take away. Defaults to online, the
+/// same as a device with a normal connection, so a test that says nothing
+/// about it behaves like every test written before this mock existed.
+@MainActor
+final class MockConnectivity: ConnectivityChecking, @unchecked Sendable {
+    var isOnlineValue = true
+
+    func isOnline() async -> Bool { isOnlineValue }
+}
+
+/// The two products TidyNote sells, by the identifiers the App Store knows
+/// them as.
+let annualPlanID = "tidynote.pro.annual"
+let monthlyPlanID = "tidynote.pro.monthly"
+
+/// One plan, priced from a string so the decimal is exactly the one the store
+/// would have sent — a `Decimal` written as a float literal is not.
+func makePlan(
+    id: String,
+    period: PeriodUnit,
+    price: String,
+    localizedPrice: String,
+    localizedPricePerMonth: String? = nil,
+    trialDays: Int? = 7
+) -> PaywallPlan {
+    PaywallPlan(
+        id: id,
+        period: period,
+        price: Decimal(string: price) ?? 0,
+        currencyCode: "USD",
+        localizedPrice: localizedPrice,
+        localizedPricePerMonth: localizedPricePerMonth,
+        trialDays: trialDays
+    )
+}
+
+/// What the store is really selling: $4.99 a month or $39.99 a year, both with
+/// a seven-day trial. The flags are for the two shapes that are harder to get
+/// on a device — a plan with no trial left, and an offering with one plan in
+/// it.
+func makeOffer(
+    trialDays: Int? = 7,
+    includesAnnual: Bool = true,
+    includesMonthly: Bool = true
+) -> PaywallOffer {
+    var plans: [PaywallPlan] = []
+    if includesMonthly {
+        plans.append(makePlan(
+            id: monthlyPlanID,
+            period: .month,
+            price: "4.99",
+            localizedPrice: "$4.99",
+            trialDays: trialDays
+        ))
+    }
+    if includesAnnual {
+        plans.append(makePlan(
+            id: annualPlanID,
+            period: .year,
+            price: "39.99",
+            localizedPrice: "$39.99",
+            localizedPricePerMonth: "$3.33",
+            trialDays: trialDays
+        ))
+    }
+    // Monthly first on the way in, so every caller also proves the offer puts
+    // the recommendation first on the way out.
+    return PaywallOffer.make(from: plans)
+        ?? PaywallOffer(plans: [], recommendedPlanID: nil, savingsPercent: nil)
 }
 
 /// Never answers. Stands in for a tidy still in flight, so a test can catch
